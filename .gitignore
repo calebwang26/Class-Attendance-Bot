@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Runtime data (browser profile holds login cookies — never commit)
+.data/
+profile/
+logs/
+*.log
+*.jsonl
+*.sqlite
+*.sqlite-journal
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+config.local.*
+
+# Test and Playwright artifacts
+coverage/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+traces/
+screenshots/
+videos/
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Claude Code local settings
+.claude/settings.local.json
