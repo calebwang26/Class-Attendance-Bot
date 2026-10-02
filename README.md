@@ -27,14 +27,6 @@ interface. Poll Everywhere is the first compatibility target.
 - Defeating CAPTCHAs, bot detection, or location/attendance verification.
 - Operating multiple accounts or responding on behalf of other people.
 
-## Authorized use
-
-This tool is built for a session whose organizer has explicitly allowed
-automated participation, and for testing against the local mock polling site
-in this repository. Using it elsewhere may break a course's attendance policy
-or the polling provider's terms of service. Check before you point it at a
-real session. See [PRIVACY.md](docs/PRIVACY.md).
-
 ## Recommended stack
 
 | Concern | Choice |
