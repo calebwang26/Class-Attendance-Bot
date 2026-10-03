@@ -6,7 +6,12 @@
 export type PollKind = 'multiple_choice' | 'free_text' | 'unsupported';
 
 /** Which in-page extractor produced the snapshot. */
-export type AdapterName = 'pollev' | 'generic';
+/**
+ * pollev: the Poll Everywhere participant page at pollev.com.
+ * pollev2: "Poll Everywhere 2.0" at pe.app, which some presenters' links redirect to.
+ * generic: any other page with ordinary form controls.
+ */
+export type AdapterName = 'pollev' | 'pollev2' | 'generic';
 
 export interface SnapshotOption {
   /** Handle for resolving the clickable element inside the page. */

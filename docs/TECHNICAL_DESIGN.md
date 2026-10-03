@@ -89,6 +89,45 @@ interface, are not visible.
 | A newer interface the bot does not recognise in the activity area | Reloads once, then notifies you with a screenshot. |
 | The page navigating away (e.g. a hand-off to another app) | Returns to the link. If that keeps happening, notifies you. |
 
+### Poll Everywhere 2.0 (pe.app)
+
+Some presenters' links (`pollev.com/<name>`) now redirect to
+`pe.app/<name>`, a newer, server-drawn participant page. The bot reads it
+with its own extractor (`pollev2`).
+
+**Sources:** the live page `pe.app/<name>`, read as a signed-out guest on
+2026-10-02, with a multiple-choice poll active and with no poll active. Not
+observed: free text, a poll after voting, a closed poll, and the server's
+replies.
+
+| Part | Selector / property | Source |
+| --- | --- | --- |
+| Page | `.ui-participant`; title "Respond to <name>'s presentation – Poll Everywhere 2.0" | live page |
+| Signed out | the header says "Guest / Not signed in" and links to `/auth/sign_in?participant=true…` | live page |
+| Waiting screen | no `.ui-format`; text "Waiting for <name>'s presentation to Start" | live page |
+| Push connection | several `turbo-cable-stream-source` (`Turbo::StreamsChannel`) | live page |
+| Question | `h1.ui-question-title` | live page |
+| Activity | `div.ui-format.ui-format-<type>` > `#respond_actions_question_<id>` | live page |
+| Option | `fieldset.ui-format__choice-list[role=radiogroup]` > `.ui-format__choice` > `form[method=post][action="/a/questions/<id>/responses/<choice>"]` > `button.ui-format__choice-button[role=radio][aria-checked][type=submit]`, label in `.ui-format__choice-label` | live page |
+| Voted option | `aria-checked="true"` | assumed (the attribute is `false` before voting) |
+| Free text | a `textarea` in the activity, with its form's submit button | assumed |
+
+How the bot treats it:
+
+- **A click is a vote**, as on the older page: the click submits the
+  option's form.
+- **Confirmation** comes from the server: the request the click sends to
+  `…/questions/<id>/responses…` getting a success reply (2xx, or a 3xx
+  redirect). A reply of 400 or above is a refusal. If the page then shows
+  the vote, the log says so; if it does not within 1.5 s (for example free
+  text, whose display after sending is not known), the response still counts
+  and is not sent again.
+- **Second checks** (after a lost reply, or a poll that looks open again) use
+  a fresh page load, since the server draws the page with your responses.
+- **On the link:** any `pe.app` page for the same presenter name as the link
+  you gave (`pollev.com/<name>`) counts as the poll page.
+- Other `.ui-format-<type>` activities are reported as not supported.
+
 ## 3. Recognition
 
 `recognize()` turns a snapshot into one state, in this order of precedence:
@@ -338,9 +377,12 @@ folder.
 
 ## 9. Known limits and open risks
 
-- **No live poll has been observed.** The first real session should be a
-  dry run (see the README). The `page.state` events in the log record what
-  the bot saw.
+- **No live poll has been observed on the older page.** The first real
+  session should be a dry run (see the README). The `page.state` events in
+  the log record what the bot saw.
+- **Poll Everywhere 2.0 is only partly observed.** Its multiple-choice
+  markup was read from a live poll, but not the page after voting or a
+  free-text poll. See "Poll Everywhere 2.0" above.
 - **Newer interfaces.** The participant page also ships code for a
   server-rendered attendance check-in and a hand-off to another app. If the
   presenter's polls use an interface other than the one described above, the

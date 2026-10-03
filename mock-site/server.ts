@@ -17,6 +17,14 @@ import path from 'node:path';
  *
  * /generic/<room> is a plain HTML form page with radio buttons or a text box,
  * for the generic extractor.
+ *
+ * /pe2/<presenter> imitates "Poll Everywhere 2.0" (pe.app), which some
+ * presenters' links now redirect to. Its markup copies what the live page
+ * showed for a multiple-choice poll: the server draws the page, each option is
+ * a button in its own form posting to /a/questions/<id>/responses/<choice>,
+ * and the page reloads itself when the presenter changes something. How the
+ * real page shows a free-text response afterwards is not known, so this one
+ * shows nothing (the harder case for the bot).
  */
 
 export type ActivityType =
@@ -72,7 +80,7 @@ export interface LedgerEntry {
   /** Option label for multiple choice, the text for free text. */
   value: string;
   at: string;
-  source: 'pollev' | 'generic';
+  source: 'pollev' | 'generic' | 'pe2';
 }
 
 export interface SubmitAttempt {
@@ -235,6 +243,10 @@ export class MockSite {
     return `${this.origin}/pollev/${presenter}`;
   }
 
+  pe2Url(presenter = 'demo'): string {
+    return `${this.origin}/pe2/${presenter}`;
+  }
+
   genericUrl(room = 'room'): string {
     return `${this.origin}/generic/${room}`;
   }
@@ -383,7 +395,7 @@ export class MockSite {
 
   // ------------------------------------------------------------------ internals
 
-  private accept(record: PollRecord, participant: string, optionId: string | null, value: string, source: 'pollev' | 'generic'): LedgerEntry {
+  private accept(record: PollRecord, participant: string, optionId: string | null, value: string, source: LedgerEntry['source']): LedgerEntry {
     const entry: LedgerEntry = {
       id: `r${this.ledger.length + 1}`,
       pollId: record.id,
@@ -490,7 +502,7 @@ export class MockSite {
       return;
     }
 
-    if ((parts[0] === 'pollev' || parts[0] === 'generic') && parts[2] === 'events' && method === 'GET') {
+    if ((parts[0] === 'pollev' || parts[0] === 'generic' || parts[0] === 'pe2') && parts[2] === 'events' && method === 'GET') {
       if (this.faults.pushDown) {
         res.writeHead(503).end();
         return;
@@ -543,6 +555,26 @@ export class MockSite {
         await this.submit(res, record, participant, body, source);
         return;
       }
+    }
+
+    if (parts[0] === 'pe2' && parts[1] && parts.length === 2 && method === 'GET') {
+      const participant = this.participantOf(req, res);
+      this.participants.add(participant);
+      this.pageLoads += 1;
+      this.html(res, 200, this.pe2Page(parts[1], participant));
+      const hook = this.onRender;
+      if (hook) hook();
+      return;
+    }
+
+    // Poll Everywhere 2.0 responses: /a/questions/<poll>/responses[/<option>]
+    if (parts[0] === 'a' && parts[1] === 'questions' && parts[2] && parts[3] === 'responses' && method === 'POST') {
+      const participant = this.participantOf(req, res);
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(chunk as Buffer);
+      const form = new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
+      await this.pe2Submit(req, res, parts[2], participant, parts[4] ?? null, form.get('value'));
+      return;
     }
 
     if (parts[0] === 'generic' && parts[1] && parts.length === 2 && method === 'GET') {
@@ -674,6 +706,71 @@ export class MockSite {
     this.json(res, 200, { id: entry.id });
   }
 
+  /**
+   * A Poll Everywhere 2.0 form submission. Success redirects back to the page
+   * (303, as a Rails app answers a form); a refusal is HTTP 422 with the page
+   * and a message, as Turbo expects.
+   */
+  private async pe2Submit(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    pollId: string,
+    participant: string,
+    optionId: string | null,
+    text: string | null,
+  ): Promise<void> {
+    const record = this.polls.get(pollId);
+    const back = (() => {
+      try {
+        return new URL(req.headers.referer ?? '', this.origin).pathname;
+      } catch {
+        return '/pe2/demo';
+      }
+    })();
+    const presenter = back.split('/').filter(Boolean)[1] ?? 'demo';
+    const note = (outcome: SubmitAttempt['outcome'], detail: string): void => {
+      this.attempts.push({ pollId, participant, at: new Date().toISOString(), outcome, detail });
+    };
+    if (this.faults.submitDelayMs > 0) await new Promise((r) => setTimeout(r, this.faults.submitDelayMs));
+    const refuse = (status: number, message: string, outcome: SubmitAttempt['outcome']): void => {
+      note(outcome, message);
+      this.html(res, status, this.pe2Page(presenter, participant, message));
+    };
+    if (this.faults.failSubmits > 0) {
+      this.faults.failSubmits -= 1;
+      return refuse(500, 'Something went wrong', 'failed');
+    }
+    if (!record) return refuse(422, 'This question is not available', 'rejected');
+    if (this.activeId !== record.id) return refuse(422, 'This question is not active', 'rejected');
+    if (record.state !== 'opened' || !record.webEnabled) return refuse(422, 'Responses are closed', 'rejected');
+    const mine = this.ledger.filter((e) => e.pollId === record.id && e.round === record.round && e.participant === participant);
+    if (record.maxVotes !== null && mine.length >= record.maxVotes) return refuse(422, 'You have already responded', 'rejected');
+
+    let entry: LedgerEntry;
+    if (record.type === 'multiple_choice_poll') {
+      const option = record.options.find((o) => o.id === optionId);
+      if (!option) return refuse(422, 'Unknown choice', 'rejected');
+      entry = this.accept(record, participant, option.id, option.value, 'pe2');
+      note('accepted', option.value);
+    } else if (record.type === 'free_text_poll') {
+      const value = (text ?? '').trim();
+      if (value === '') return refuse(422, 'Response is empty', 'rejected');
+      entry = this.accept(record, participant, null, value, 'pe2');
+      note('accepted', value);
+    } else {
+      return refuse(422, 'This question type takes no responses here', 'rejected');
+    }
+    if (this.faults.dropReplies > 0) {
+      // Recorded, but the connection drops part-way through the answer.
+      this.faults.dropReplies -= 1;
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': '500' });
+      res.write('<!doctype html><html><body>');
+      setTimeout(() => res.destroy(), 20);
+      return;
+    }
+    res.writeHead(303, { location: back, 'cache-control': 'no-store', 'x-response-id': entry.id }).end();
+  }
+
   private statusReport(): Record<string, unknown> {
     const record = this.active;
     return {
@@ -785,6 +882,75 @@ ${dialog}
 ${overlay}
 <script>window.__mockInitialActivity = ${initial}; window.__mockRenderedAt = ${Date.now()}; window.__mockWaitingFlashMs = ${this.faults.waitingFlashMs};</script>
 <script src="/static/pollev.js"></script>
+</body>
+</html>`;
+  }
+
+  /** The participant page of "Poll Everywhere 2.0", drawn by the server. */
+  private pe2Page(presenter: string, participant: string, error: string | null = null): string {
+    const record = this.active;
+    const name = esc(presenter);
+    const header = this.flags.signedIn
+      ? '<div class="ui-account">Signed in<br>participant@example.edu</div>'
+      : '<div class="ui-account">Guest<br>Not signed in</div><a href="/auth/sign_in?participant=true">Log in</a>';
+    let body: string;
+    if (!record || !record.webEnabled) {
+      body = `<div class="ui-waiting"><h1>Waiting for ${name}'s presentation to begin...</h1><p>As soon as the activity is active, you'll see it here.</p></div>`;
+    } else {
+      const mine = this.ledger.filter((e) => e.pollId === record.id && e.round === record.round && e.participant === participant);
+      const closed = record.state !== 'opened';
+      const id = esc(record.id);
+      const title = `<h1 class="ui-question-title">${esc(record.title)}</h1>`;
+      if (record.type === 'multiple_choice_poll') {
+        const full = record.maxVotes !== null && mine.length >= record.maxVotes;
+        const choices = record.options
+          .map((o) => {
+            const checked = mine.some((e) => e.optionId === o.id);
+            const disabled = closed || (full && !checked);
+            return `<div class="ui-format__choice"><form method="post" action="/a/questions/${id}/responses/${esc(o.id)}">
+<button class="ui-format__choice-button" role="radio" aria-checked="${checked}" type="submit" data-choice-id="${esc(o.id)}"${disabled ? ' disabled aria-disabled="true"' : ''}><span class="ui-format__choice-label">${esc(o.value)}</span></button></form></div>`;
+          })
+          .join('\n');
+        body = `${title}<div class="ui-format ui-format-multiple-choice"><div id="respond_actions_question_${id}">
+<fieldset class="ui-format__choice-list" role="radiogroup">${choices}</fieldset></div>${closed ? '<p>Responses are closed.</p>' : ''}</div>`;
+      } else if (record.type === 'free_text_poll') {
+        body = `${title}<div class="ui-format ui-format-open-ended"><div id="respond_actions_question_${id}">
+<form method="post" action="/a/questions/${id}/responses"><textarea name="value" rows="3"${closed ? ' disabled' : ''}></textarea>
+<button type="submit"${closed ? ' disabled' : ''}>Submit</button></form></div>${closed ? '<p>Responses are closed.</p>' : ''}</div>`;
+      } else {
+        body = `${title}<div class="ui-format ui-format-${esc(record.type.replace(/_poll$/, '').replace(/_/g, '-'))}"><div id="respond_actions_question_${id}"><p>Respond on a supported device.</p></div></div>`;
+      }
+    }
+    const alert = error ? `<div role="alert" class="ui-flash">${esc(error)}</div>` : '';
+    return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Respond to ${name}'s presentation – Mock Poll Everywhere 2.0</title>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="plain">
+<div class="ui-participant">
+<header class="ui-header"><span>${name}</span>${header}</header>
+<turbo-cable-stream-source channel="Turbo::StreamsChannel" signed-stream-name="mock"></turbo-cable-stream-source>
+<main>${alert}${body}</main>
+</div>
+<script>
+(() => {
+  const source = document.querySelector('turbo-cable-stream-source');
+  const events = new EventSource('/pe2/${name}/events?since=${Date.now()}');
+  events.onopen = () => source.setAttribute('connected', '');
+  events.onerror = () => source.removeAttribute('connected');
+  const refresh = () => window.location.replace(window.location.pathname);
+  events.addEventListener('activation', refresh);
+  events.addEventListener('poll', refresh);
+  events.addEventListener('command', (event) => {
+    const command = JSON.parse(event.data);
+    if (command.redirect) window.location.href = command.redirect;
+    else if (command.reload) refresh();
+  });
+})();
+</script>
 </body>
 </html>`;
   }

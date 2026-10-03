@@ -10,8 +10,11 @@ before class and stop it when class ends.
   answers the same poll twice, and recovers from reloads, crashes and network
   drops.
 
-**Status: built and tested against a local copy of the Poll Everywhere page.
-Not yet tested against a real live poll.** The bot's handling of polls was
+**Status: works with both versions of the Poll Everywhere page: the older
+one at pollev.com and "Poll Everywhere 2.0" at pe.app, where some presenters'
+links now redirect. Multiple choice on pe.app has been tested on a real live
+poll. The rest (free text on pe.app, and the older page) has been tested
+against local copies of the page, not yet on a live poll.** The bot's handling of polls was
 written from Poll Everywhere's own page scripts and checked against a local
 mock of that page (see [docs/TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md)).
 Do the first real session as a dry run; see
@@ -30,16 +33,35 @@ npm install
 npx playwright install chromium
 ```
 
-Then sign in to Poll Everywhere in the bot's own browser. The bot does not use
-your everyday browser, so it is not signed in yet:
+## Signing in
 
-```bash
-npm run login -- pollev.com/yourpresenter
-```
+Sign in so your responses are credited to your account. The bot uses its own
+browser window, separate from Chrome, Arc or Safari, so signing in there does
+not carry over. You sign in yourself; the bot never handles your password.
 
-A browser window opens. Click **Log in** in the sidebar and sign in with your
-school account. You can also close the cookie notice there. Then close the
-window. The sign-in is kept for next time.
+1. Start the bot on the poll link (see [Every class](#every-class)), without
+   `--allow-guest`.
+2. The bot's window opens on the poll page. The terminal says you are not
+   signed in, and the bot answers nothing until you are.
+3. In that window, click **Log in**, enter your school email, and finish your
+   school's sign-in (and Duo, if it asks).
+4. Once the window is back on the poll page, signed in, the terminal says
+   "All set — carrying on." From then on every response counts for you.
+
+**Leave the bot's window open for the whole class.** A school sign-in may last
+only while the browser is open; closing the window part-way through signing
+in, or between classes, can sign you out. If the bot says you are not signed
+in next time, sign in again in its window. Start the bot a few minutes before
+class so there is time.
+
+pollev.com and pe.app (see [Which link](#which-link)) are separate sign-ins.
+Signing in on one does not sign you in on the other. Within one site, the
+sign-in works for every presenter's link.
+
+To check afterwards, open **Response history** on Poll Everywhere.
+
+You can also sign in without watching for polls, using
+`npm run login -- pollev.com/presenter`.
 
 ## Every class
 
@@ -54,8 +76,28 @@ It asks for the poll link. Paste it, or press Enter to reuse the last one. You
 can also give the link directly:
 
 ```bash
-npm start -- pollev.com/yourpresenter
+npm start -- pollev.com/presenter
 ```
+
+### Which link
+
+Use the presenter's link, whatever it is: replace `presenter` with the name
+after `pollev.com/` in the link you were given. For example, for
+`pollev.com/someprofessor`:
+
+```bash
+npm start -- pollev.com/someprofessor
+```
+
+These all work the same:
+
+- just the name: `npm start -- someprofessor` (becomes `pollev.com/someprofessor`);
+- the full address copied from the browser: `npm start -- https://pollev.com/someprofessor`;
+- no link at all: `npm start`, then paste it or press Enter for the last one.
+
+Some presenters' links now open "Poll Everywhere 2.0" at `pe.app/<name>`
+instead. Give the pollev.com link anyway; the bot follows the redirect and
+handles both versions.
 
 A browser window opens on the poll page and the terminal shows what the bot
 is doing:
@@ -122,8 +164,9 @@ meaning, is listed in [docs/TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md#settin
 
 ## First real session
 
-Detection of a real active poll has only been checked against Poll
-Everywhere's code and a faithful mock, not against a live poll. So:
+On the older pollev.com page, detection of a real active poll has only been
+checked against Poll Everywhere's code and a faithful mock, not against a live
+poll. So, the first time you use it on a class with that page:
 
 1. Run a dry run during a real session and watch both the bot's window and
    the terminal:
@@ -155,6 +198,8 @@ another terminal, point the bot at the mock:
 ```bash
 npm start -- http://127.0.0.1:4173/pollev/demo
 ```
+
+For the Poll Everywhere 2.0 version, use `http://127.0.0.1:4173/pe2/demo`.
 
 From the controls page you can show polls, lock them, clear responses, reload
 the participant page, drop the connection and make responses fail.

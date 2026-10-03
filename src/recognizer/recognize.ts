@@ -16,7 +16,7 @@ export function pollStatus(snapshot: PageSnapshot, poll: SnapshotPoll): { status
   if (poll.kind === 'multiple_choice') {
     const selected = poll.options.filter((o) => o.selected);
     const anyEnabled = poll.options.some((o) => !o.disabled);
-    if (snapshot.adapter === 'pollev') {
+    if (snapshot.adapter === 'pollev' || snapshot.adapter === 'pollev2') {
       // On Poll Everywhere a click is a vote, so an option marked as voted is a response.
       if (selected.length > 0) {
         return { status: 'answered', evidence: `"${selected[0]?.label ?? ''}" is marked as your vote${status}` };
@@ -66,7 +66,7 @@ export function recognize(snapshot: PageSnapshot, options: RecognizeOptions): Re
     return { state: 'needs_user', reason: 'dialog', detail: snapshot.blockingDialog };
   }
 
-  if (snapshot.adapter === 'pollev') {
+  if (snapshot.adapter === 'pollev' || snapshot.adapter === 'pollev2') {
     if (!snapshot.scopeFound) return { state: 'unknown', reason: 'this is not a poll page (no activity area found)' };
     if (snapshot.liveTabSelected === false) return { state: 'unknown', reason: 'a tab other than the live activity is selected' };
     if (options.requireSignIn && snapshot.signedIn === false) {
@@ -114,6 +114,30 @@ export function locationKey(url: string): string {
     return `${u.origin}${u.pathname.replace(/\/+$/, '')}`.toLowerCase();
   } catch {
     return url;
+  }
+}
+
+const POLL_EVERYWHERE_HOSTS = ['pollev.com', 'pe.app', 'polleverywhere.com'];
+
+function pollEverywhereHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return POLL_EVERYWHERE_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+}
+
+/**
+ * Whether two links are the same presenter's page on Poll Everywhere, allowing
+ * for the move between its addresses (pollev.com/<name> redirects to
+ * pe.app/<name> for presenters on "Poll Everywhere 2.0").
+ */
+export function samePresenter(a: string, b: string): boolean {
+  try {
+    const ua = new URL(a);
+    const ub = new URL(b);
+    if (!pollEverywhereHost(ua.hostname) || !pollEverywhereHost(ub.hostname)) return false;
+    const first = (u: URL): string => (u.pathname.split('/').find((part) => part !== '') ?? '').toLowerCase();
+    return first(ua) !== '' && first(ua) === first(ub);
+  } catch {
+    return false;
   }
 }
 

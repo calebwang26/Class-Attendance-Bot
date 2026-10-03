@@ -12,6 +12,8 @@ export interface Baseline {
   savedResponses: number | null;
   /** Which document the counters belong to (they start again at zero on a reload). */
   docStartedAt: number;
+  /** When the attempt began (epoch ms); requests the page sends from then on are this attempt's. */
+  startedAt: number;
 }
 
 /** How often the page is re-read while waiting for it. */
@@ -20,6 +22,10 @@ const POLL_MS = 150;
 const TRANSIENT_MS = 2500;
 /** How long the page must show something else before the poll counts as gone. */
 const GONE_MS = 1000;
+/** Poll Everywhere 2.0: how long, after the server accepted a response, the page may take to show it. */
+const SHOW_MS = 1500;
+/** Poll Everywhere 2.0: the address a response is sent to (/a/questions/<id>/responses[/<choice>]). */
+const RESPONSE_PATH = /\/questions\/[^/]+\/responses(?:\/|$)/;
 
 type Activation = 'click' | 'keyboard' | 'dom_click' | 'none';
 
@@ -260,7 +266,7 @@ export class Submitter {
    */
   private settleFor(snapshot: PageSnapshot): number {
     const timeout = this.config.response.confirmTimeoutMs;
-    return snapshot.adapter === 'pollev' ? Math.max(0, timeout - 400) : Math.min(1000, Math.floor(timeout / 4));
+    return snapshot.adapter !== 'generic' ? Math.max(0, timeout - 400) : Math.min(1000, Math.floor(timeout / 4));
   }
 
   /**
@@ -268,7 +274,9 @@ export class Submitter {
    *
    *   1. the page's own "saved" announcement, raised only after the server accepted;
    *   2. the page's own record of responses gaining a saved entry;
-   *   3. the poll displaying as answered and staying that way, with nothing
+   *   3. on Poll Everywhere 2.0, the server accepting the vote's request and the
+   *      page then showing the vote;
+   *   4. the poll displaying as answered and staying that way, with nothing
    *      left waiting for the server.
    *
    * An error raised by the page since the attempt began means failure. On pages
@@ -288,6 +296,7 @@ export class Submitter {
     let goneSince: number | null = null;
     let submitClicked = flags.submitClicked;
     let stillPending = false;
+    let acceptedSince: number | null = null;
 
     while (Date.now() < deadline) {
       if (signal.aborted) return sentButFailed('stopped');
@@ -313,6 +322,28 @@ export class Submitter {
       }
       if (sameDocument && reading.snapshot.signals.errors > before.signals.errors) {
         return sentButFailed(`the page reported an error: ${reading.snapshot.signals.lastError ?? 'unknown error'}`, current === null);
+      }
+      if (reading?.snapshot.adapter === 'pollev2') {
+        // This page sends a response as an ordinary form request to the question's
+        // ".../responses" address, and the reply's status says whether it was taken.
+        const sends = this.monitor.sendsSince(before.startedAt);
+        if (sends.total > 0 && sends.inFlight === 0 && sends.rejected === sends.total) {
+          return sentButFailed('the server refused the response', current === null);
+        }
+        if (sends.inFlight === 0 && sends.acceptedPaths.some((p) => RESPONSE_PATH.test(p))) {
+          acceptedSince ??= now;
+          // Give the page a moment to draw the response, so it is known whether it can.
+          if (current?.status === 'answered' || now - acceptedSince >= SHOW_MS) {
+            const shows = current?.status === 'answered';
+            return {
+              ok: true,
+              evidence: shows ? `the server accepted the response and ${current.evidence}` : 'the server accepted the response',
+              pageShowsAnswered: shows,
+              pollGone: false,
+              sent: true,
+            };
+          }
+        }
       }
 
       if (!current) {

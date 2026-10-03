@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { locationKey, pollStatus, recognize, sameLocation, sameOrigin } from '../../src/recognizer/recognize.ts';
+import { locationKey, pollStatus, recognize, sameLocation, sameOrigin, samePresenter } from '../../src/recognizer/recognize.ts';
 import type { PageSnapshot, SnapshotOption, SnapshotPoll } from '../../src/types.ts';
 
 const poll = (over: Partial<SnapshotPoll> = {}): SnapshotPoll => ({
@@ -186,4 +186,25 @@ test('location helpers ignore query, fragment, trailing slash and letter case of
   assert.ok(sameOrigin('https://pollev.com/a', 'https://pollev.com/b?c'));
   assert.ok(!sameOrigin('https://pollev.com/a', 'https://login.school.edu/sso'));
   assert.ok(!sameOrigin('nonsense', 'https://pollev.com/'));
+});
+
+test('Poll Everywhere 2.0: a marked option is a vote, and signed out needs the user', () => {
+  const two = (selected: boolean) => poll({ options: opts([['A', false, selected], ['B', false, false]]) });
+  const base = { adapter: 'pollev2' as const, url: 'https://pe.app/someone' };
+  const answered = recognize(snap({ ...base, poll: two(true) }), strict);
+  assert.equal(answered.state === 'poll' && answered.status, 'answered');
+  const open = recognize(snap({ ...base, poll: two(false) }), strict);
+  assert.equal(open.state === 'poll' && open.status, 'open');
+  assert.equal(recognize(snap({ ...base, signedIn: false, poll: two(false) }), strict).state, 'needs_user');
+  assert.equal(recognize(snap({ ...base, scopeFound: false }), strict).state, 'unknown');
+});
+
+test('samePresenter matches one presenter across pollev.com and pe.app, and nothing else', () => {
+  assert.ok(samePresenter('https://pe.app/SomeOne', 'https://pollev.com/someone'));
+  assert.ok(samePresenter('https://pe.app/someone/', 'https://www.pollev.com/someone?x=1'));
+  assert.ok(!samePresenter('https://pe.app/someone', 'https://pollev.com/someoneelse'));
+  assert.ok(!samePresenter('https://pe.app/', 'https://pollev.com/'));
+  assert.ok(!samePresenter('https://evil.example/someone', 'https://pollev.com/someone'));
+  assert.ok(!samePresenter('https://notpe.app/someone', 'https://pollev.com/someone'));
+  assert.ok(!samePresenter('nonsense', 'https://pollev.com/someone'));
 });
