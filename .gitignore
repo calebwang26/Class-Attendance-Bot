@@ -21,6 +21,7 @@ logs/
 .env.*
 !.env.example
 config.local.*
+pollbot.config.json
 
 # Test and Playwright artifacts
 coverage/

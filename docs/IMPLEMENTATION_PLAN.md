@@ -1,146 +1,145 @@
-# Implementation Plan
+# Implementation Plan and Status
 
-Phases are sequential. Each ends with acceptance criteria that must pass
-before the next begins. Sizes are relative effort, not calendar estimates.
+## Decisions made with the project owner
 
-## Phase 1 — Repository preparation (this phase)
-
-Deliverables: `README.md`, `.gitignore`, and the five documents under `docs/`.
-
-Acceptance:
-- [x] Repository inspected and its state recorded (empty, no commits).
-- [x] Stack recommended with reasons.
-- [x] Architecture, data flow, test strategy, and privacy practices written.
-- [ ] Open decisions below answered by the project owner.
-
-## Phase 2 — Scaffold and mock polling site (small)
-
-- Initialize the TypeScript project, lint, format, Vitest, Playwright Test.
-- Config loader with Zod schema and defaults.
-- Logger writing JSON Lines.
-- `mock-site/`: a local server with a presenter control page and a participant
-  page, covering every state in
-  [TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md#recognition-rules).
-- Read-only inspection of the real participant page during an authorized
-  session: record the DOM structure, URL behavior, and network messages for
-  each state. Save sanitized fixtures under `tests/fixtures/`.
-
-Dependencies: Node 24, Playwright, Vitest, Zod, Pino, a YAML parser.
-
-Acceptance:
-- `npm test` runs and passes with at least the config tests.
-- The mock site can be driven through waiting → multiple choice → answered →
-  free text → closed from its control page.
-- A written note of what the real page looks like, resolving the assumptions
-  flagged in the technical design.
-
-## Phase 3 — Monitoring and recognition, read-only (medium)
-
-- `browser`: persistent context, `login` command, navigation, observer
-  injection, fallback poll, liveness check.
-- `adapters/mock` and `adapters/pollev`: snapshot and recognize.
-- `dedupe`: fingerprinting and the persisted store.
-- `session`: window scheduling.
-- Orchestrator in `skip` (dry-run) mode: detects and logs, never clicks.
-
-Acceptance:
-- Against the mock site, every activated poll produces exactly one
-  `poll.detected` event within 1 s, with correct question, kind, and options.
-- Reloading the mock page mid-poll produces no second detection event.
-- Unit tests cover the recognizer for each fixture state.
-- A dry run against one real authorized session logs every poll shown, with
-  no interaction and no missed or duplicated polls (checked against a manual
-  count).
-
-## Phase 4 — Response and confirmation (medium)
-
-- `selector`: `first`, `random`, `fixed_text`, `rules`, `skip`.
-- `submitter`: multiple choice and free text, confirmation, single retry.
-- Orchestrator: full state machine with the single-flight lock.
-
-Acceptance:
-- Against the mock site: 100 consecutive polls of mixed type answered, 100
-  confirmations, 0 duplicate submissions (counted server-side by the mock).
-- Submission that fails server-side is retried once, then marked `failed`.
-- A poll answered by hand before the bot acts is recorded as answered and not
-  touched.
-- Restarting the process mid-poll does not produce a second submission.
-
-## Phase 5 — Recovery and hardening (medium)
-
-- Backoff recovery for reload, navigation away, tab crash, network loss.
-- `auth_required` and `unknown` handling with screenshot and notification.
-- Sleep prevention during the window; background-throttling flags.
-- Session summary at stop.
-- Status UI: terminal first, then the local dashboard if approved.
-- `ask` strategy and desktop notifications if approved.
-
-Acceptance:
-- Each failure scenario in [TESTING.md](TESTING.md#failure-scenarios) passes
-  as an automated test against the mock site.
-- A 90-minute soak run against the mock site with a poll every 3–10 minutes
-  and injected faults: all polls answered once, memory stable, idle CPU under
-  2% on the development machine.
-
-## Phase 6 — Live validation and packaging (small)
-
-- One supervised run in a real authorized session with the user watching.
-- One unattended run.
-- Document OS-level scheduling for the morning start.
-- Optional: package as a double-clickable app.
-
-Acceptance:
-- Supervised run: every poll answered and confirmed; log matches what the
-  presenter's view shows.
-- Unattended run: same, with no intervention.
-
-## Milestones
-
-| Milestone | Reached when |
+| Question | Answer |
 | --- | --- |
-| M1 Docs approved | Phase 1 decisions answered |
-| M2 Mock loop | Phase 2 done; mock site drives all states |
-| M3 It sees | Phase 3 dry run on a real session is accurate |
-| M4 It answers | Phase 4 passes on the mock site |
-| M5 It survives | Phase 5 soak test passes |
-| M6 It ships | Phase 6 unattended run succeeds |
+| Points for responding or for correct answers? | For responding. Correctness does not matter. |
+| Multiple choice | A random option. |
+| Free text | Always the literal text `value`. |
+| Which poll page? | Any link the user gives at start: prompted for, or passed on the command line. The last one is remembered. |
+| Scheduling | None. The user starts the bot and it runs until they stop it. An optional `--stop-after` exists but is off by default. |
+| Interface | Terminal plus the browser window. No separate app. A double-click launcher is provided for macOS. |
+| Sign-in | Poll Everywhere account (school email), signed in once in the bot's own browser. |
+| Poll types | About 95% multiple choice, the rest free text. |
+| Stack | Left to the implementer: TypeScript on Node.js 24 with Playwright. |
 
-## Open questions and decisions needing approval
+## Phases
 
-### Decisions
+### Phase 1: Documentation (done)
 
-1. **Stack.** TypeScript + Node 24 + Playwright, as recommended? (Python +
-   Playwright is a workable alternative if preferred.)
-2. **Response strategy.** Do points depend on participating only, or on
-   answering correctly? This picks the default: `first`/`random` for the
-   former, `ask` or `rules` for the latter.
-3. **Free-text default.** What string should be sent to open-ended polls?
-4. **UI scope.** Terminal status only, a local dashboard, or a packaged
-   desktop app?
-5. **Notifications.** Desktop notification only, or also something that
-   reaches a phone (which would add a third-party service)?
-6. **Headed window.** Is a visible browser window during the session
-   acceptable?
-7. **Morning start.** Start by hand each day, or set up OS scheduling and
-   wake-from-sleep?
+The first commit: README and design documents.
 
-### Facts to supply or confirm
+### Phase 2: Scaffold, page study, mock site (done)
 
-8. The participant URL, and whether it requires a signed-in Poll Everywhere
-   account, a guest name, or SSO.
-9. Which poll types the presenter uses (multiple choice, open-ended, word
-   cloud, Q&A, ranking, clickable image, competitions).
-10. Whether responses can be changed after submission, and whether polls are
-    timed.
-11. Session days and time zone.
-12. Confirmation that the organizer's permission for automated participation
-    covers this tool, and that a read-only inspection run in Phase 2 is fine.
+- Project set up with TypeScript (type stripping, no build), Playwright, and
+  `node:test`.
+- The live participant page was studied read-only as a signed-out guest. Its
+  public scripts were analysed, and every finding was checked by a second
+  independent reading against the source. Results are in
+  [TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md#2-what-is-known-about-the-poll-everywhere-page).
+- The mock site reproduces the page's structure and behaviour, with fault
+  switches and a server-side ledger of responses.
 
-### Technical unknowns (resolved by the Phase 2 inspection)
+**Acceptance (met):**
 
-13. Is a stable poll identifier available in the DOM, URL, or network
-    messages?
-14. What does the page show after a response is accepted?
-15. Does the page keep a live connection in a background tab for 90 minutes,
-    or does it need a periodic reload?
-16. How does the page behave when the same question is reactivated?
+- The mock site can be driven through waiting, multiple choice, answered,
+  free text and closed.
+- The real waiting page, as captured, is recognised by the bot (test
+  `safety.test.ts`). The bot was also pointed at the real page read-only, in
+  its own browser, signed out and in dry run. It recognised the Poll
+  Everywhere layout, the signed-out state, the live connection and the cookie
+  notice, and clicked nothing.
+
+### Phase 3: Monitoring and recognition (done)
+
+The browser monitor, page agent, recognizer, fingerprinting, answered-polls
+file, and dry run.
+
+**Acceptance (met, against the mock):**
+
+- Every activated poll produces exactly one `poll.detected` within 1 s, with
+  the correct question, kind and options.
+- Reloads and redraws do not produce a second detection.
+
+### Phase 4: Responding and confirmation (done)
+
+Answer selection, submission with mouse and keyboard fallback, confirmation
+rules, retries with back-off, and the duplicate-prevention rule with the
+reload check.
+
+**Acceptance (met, against the mock):**
+
+- One response per poll per round, counted server-side, across the
+  scenarios in [TESTING.md](TESTING.md). These include failed, slow and
+  silently rejected submissions, answers made by hand or on another device,
+  restarts, and re-votes.
+
+### Phase 5: Recovery and hardening (done)
+
+Recovery from reloads, navigation, crashes, frozen tabs, network loss and
+push-connection loss. Periodic resync. Sign-in, dialog and unsupported-type
+handling with notifications. Single-copy lock. Keeping the Mac awake.
+Session summary.
+
+**Acceptance (met):**
+
+- Each failure scenario in TESTING.md passes as an automated test.
+- The scripted soak session passes in its 3-minute form: 12 polls plus a
+  re-vote, each answered exactly once, through a failed submission, a
+  reload, a network outage and a push-connection drop.
+
+### Independent review (done)
+
+Two separate reviews were run against the code:
+
+- one compared the page-reading code and the mock with Poll Everywhere's own
+  scripts;
+- one looked for sequences of events that double-submit, miss a poll, hang,
+  or misreport.
+
+A third review then went over the rewritten retry and check logic. Every
+finding from all three was reproduced, fixed and given a regression test
+(`fidelity.test.ts`, `review.test.ts`, `review2.test.ts`). The main fixes
+were these:
+
+- **Server check before any duplicate risk.** Before resending after an
+  unconfirmed attempt, or answering an answered poll again, the bot reloads
+  the page and requires it to have fetched your earlier responses.
+- **Doubts are tracked per poll.** The doubt about whether a vote reached
+  the server is kept per poll and settled only by evidence from the current
+  page.
+- **Pending responses don't count.** A response the page is still sending is
+  never counted as answered.
+- **No reload while sending.** The bot never reloads while the page is
+  sending something.
+- **Clear rejections retried promptly.** A vote the server explicitly
+  rejected is retried after the normal pause, without a check.
+- **Redraws mid-attempt.** These are waited out rather than treated as the
+  poll disappearing.
+- **One more round after giving up,** once a fresh page shows the poll still
+  open.
+- **Clean shutdown.** The browser is closed properly before the process
+  exits.
+- **Page details:** hidden titles, equations still loading, and repeated
+  option labels.
+
+### Phase 6: Live validation (to do — needs a live session)
+
+1. Sign in with `npm run login -- <link>`.
+2. A dry run in a real session, watched (README, "First real session").
+   Check that each poll is reported, and check the `page.state` events in
+   the log.
+3. A normal run, watched for the first polls.
+4. An unattended run.
+
+**Acceptance:** the summary count equals the polls shown, and the Poll
+Everywhere History page shows one response per poll.
+
+## Open questions
+
+Only a live session can settle these. The bot is built to behave safely
+either way.
+
+1. **Does the participant page draw live polls with the interface described
+   in the technical design?** The page loads that code, and the owner's
+   description matches it. If a different interface appears, the bot
+   reports it instead of guessing.
+2. **Does a freshly loaded page fetch the participant's earlier responses
+   from an address ending in `/results`?** If not, a re-vote is left to the
+   user (with a notification) rather than risking a duplicate.
+3. **Are some activities handed off to another app, or run as attendance
+   check-ins?** If so, the bot notifies instead of answering.
+4. **How long do this presenter's polls stay open?** With the default 2–8 s
+   delay, a poll that closes within about 10 s could be missed. Shorten
+   `response.delayMs` if so.

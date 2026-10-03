@@ -1,172 +1,116 @@
 # Architecture
 
-## Starting point
-
-The repository had no commits and no files when this was written. There is no
-existing code or stack to adapt to; this document describes a proposed design.
-
 ## Overview
 
 One Node.js process drives one Chromium window through Playwright. A small
-script injected into the page watches the DOM and reports changes back to the
-Node side, where a pipeline turns "the page changed" into "a response was
-submitted and confirmed".
+script injected into every page (the *page agent*) reports what the page
+shows and tells Node when the page changes. A single serialised loop turns
+those reports into decisions and, when a poll should be answered, operates
+the page's own controls and waits for the page to confirm.
 
 ```
-                        ┌──────────────────────────────────────────┐
-                        │              Node.js process             │
-                        │                                          │
-  config.yaml ─────────▶│  Config ──▶ Session Scheduler            │
-                        │                  │ start / stop          │
-                        │                  ▼                       │
-                        │           ┌─────────────┐                │
-                        │           │ Orchestrator│◀── status ──▶ UI
-                        │           └──────┬──────┘                │
-                        │   ┌──────────────┼───────────────┐       │
-                        │   ▼              ▼               ▼       │
-                        │ Browser      Recognizer      Dedupe      │
-                        │ Monitor      (adapter)       Store       │
-                        │   │              │               │       │
-                        │   │              ▼               │       │
-                        │   │        Response Selector     │       │
-                        │   │              │               │       │
-                        │   │              ▼               │       │
-                        │   └────────▶ Submitter ──────────┘       │
-                        │                  │                       │
-                        │               Logger ──▶ logs/*.jsonl    │
-                        └──────────────────┼───────────────────────┘
-                                           │ Playwright (CDP)
-                        ┌──────────────────▼───────────────────────┐
-                        │ Chromium, persistent profile             │
-                        │  poll page + injected MutationObserver   │
-                        └──────────────────────────────────────────┘
+  you ── link ──▶ CLI (index.ts) ── settings ──▶ Orchestrator (main loop)
+                     │                              │   ▲
+                     │ lock, logger,                │   │ change notices
+                     │ answered-polls file          ▼   │
+                     │                        BrowserMonitor ── Playwright ──▶ Chromium
+                     │                              │                          (own profile)
+                     │                              │ snapshot / element         │
+                     │                              ▼                            │
+                     │                     page agent (in the page) ◀────────────┘
+                     │
+                     └─ notify (desktop), keep-awake (macOS)
+
+  Orchestrator per pass:  snapshot → recognize → decide → (select → submit → confirm) → record → log
 ```
 
-## Components
+## Modules
 
-Each component is a module with a narrow interface. Only the Browser Monitor
-and the Submitter touch Playwright; only the site adapter knows selectors.
+| Module | Responsibility |
+| --- | --- |
+| `src/index.ts` | Command line: reads flags and settings, asks for the link, takes the single-copy lock, starts the bot or the sign-in window, prints the summary, handles Ctrl+C. |
+| `src/cli/` | Flag parsing (`args.ts`) and the link prompt plus last-link memory (`prompt.ts`). |
+| `src/config/config.ts` | Settings: defaults, validation (unknown keys and bad values are errors), link normalisation. |
+| `src/browser/pageAgent.ts` | Runs inside the page. Watches for DOM changes and the page's own "saved" and "error" events, and builds a `PageSnapshot`: whether a poll is showing, its question, options, text box, status line, the participant's own responses, sign-in state, dialogs, connection state. Changes nothing on the page. |
+| `src/browser/monitor.ts` | Owns the browser: launches the persistent profile, injects the agent, relays change notices, takes snapshots, and hands out elements by reference. It watches the page's requests: those that load earlier responses, and those that send something, with how they ended (method, address, status only). It also replaces crashed tabs and reports closed windows. |
+| `src/recognizer/` | Pure functions. `recognize.ts` turns a snapshot into one state (`loading`, `waiting`, `needs_user`, `unknown`, `poll` with status `open` / `answered` / `closed`). `fingerprint.ts` gives each poll a stable identity. |
+| `src/dedupe/decide.ts` | The duplicate-prevention rule as a pure function: respond, wait, check by reloading, or leave alone. |
+| `src/dedupe/store.ts` | The answered-polls file (`.data/answered.json`): written atomically, pruned by age, an unreadable file is moved aside. |
+| `src/selector/select.ts` | Chooses what to send: an option (random / first / last) or the text. |
+| `src/submitter/submit.ts` | One response attempt through the page's controls (mouse first; keyboard if something covers the control; the element's own click as a last resort), then waits for confirmation. Never retries by itself. |
+| `src/orchestrator/orchestrator.ts` | The main loop and the state that spans passes: the current poll appearance, earlier answers, recovery and back-off, network and connection health, periodic reloads, alerts to the user, counters for the summary. |
+| `src/logger/logger.ts` | JSON Lines event log plus short terminal messages; drops credential-like fields; optional hashing of poll text. |
+| `src/system/` | Desktop notifications (macOS `osascript`), keeping the Mac awake (`caffeinate`), the single-copy lock. |
+| `mock-site/` | The local mock of the Poll Everywhere participant page and a plain-form page, with a presenter control page and fault switches. Used by the tests and for trying the bot. |
 
-| Module | Responsibility | Depends on |
-| --- | --- | --- |
-| `config` | Load and validate YAML; supply defaults | Zod |
-| `session` | Decide whether now is inside the session window; emit start/stop | `config` |
-| `browser` | Launch the persistent context, open the poll URL, inject the observer, detect reloads/navigation/disconnects, re-arm | Playwright |
-| `adapters/<site>` | Site-specific knowledge: how to tell a poll is active, how to read it, how to tell it was answered | none (pure functions over a page snapshot, plus locators) |
-| `recognizer` | Turn a page snapshot into a `Poll` or `null` using the adapter | adapter |
-| `dedupe` | Fingerprint polls; record and look up answered ones; persist to disk | fs |
-| `selector` | Choose a `Response` for a `Poll` from the configured strategy | `config` |
-| `submitter` | Perform the clicks/typing, then wait for the adapter's confirmation signal | Playwright, adapter |
-| `orchestrator` | The state machine tying the above together; retries and backoff | all of the above |
-| `logger` | Structured events to file and console | Pino |
-| `ui` | Show status and recent events; pause/resume | orchestrator events |
+Poll Everywhere specifics are confined to the page agent (selectors, status
+texts) and one rule in the recognizer: on that site, an option marked as
+voted counts as a response. Everything else is site-independent. For other
+sites the page agent has a conservative generic extractor: a group of radio
+buttons with a submit button, or a single text box.
 
-### Site adapter boundary
+## Data flow for one poll
 
-Poll Everywhere specifics live in `adapters/pollev`. The mock site gets its own
-adapter (or reuses the same one if the mock mirrors the real markup closely
-enough). Adding another provider means adding an adapter, not editing the
-pipeline.
+1. **Change.** The page agent's `MutationObserver` (or the page's "saved"
+   event) calls into Node. The loop is woken after a short debounce (250 ms).
+   It also wakes every 5 s regardless, as a safety net.
+2. **Snapshot.** The page agent reports the page. If that fails three times
+   in a row the tab is replaced and the poll link reloaded.
+3. **Recognize.** The snapshot becomes one state. A poll gets a fingerprint
+   from its kind, question, sorted option labels and, on Poll Everywhere, the
+   poll's own id.
+4. **Track the appearance.** A poll seen continuously, including across
+   reloads and redraws, is one appearance. It is logged as `poll.detected`
+   once it has held still for a moment, so a half-drawn poll is never
+   reported.
+5. **Decide.** If the page shows the poll as answered: record it and do
+   nothing. If closed: wait. If answered earlier but showing open again:
+   settle, reload to check, and only then answer again. Otherwise respond.
+6. **Hold.** It waits for the random response delay (default 2–8 s) and for
+   the poll to have been steadily open in the same page element for the
+   settling period (1.5 s). It also waits while the page is still fetching
+   the participant's earlier responses, and while the network is down.
+7. **Select and submit.** The page is read again, an option or the text is
+   chosen, and the control is operated.
+8. **Confirm.** Success is any of:
+   - the page's own "saved" announcement;
+   - a saved entry appearing in the page's record of responses;
+   - the poll displaying as answered for the whole confirmation period, with
+     nothing still waiting on the server and no error.
 
-```ts
-interface SiteAdapter {
-  matches(url: string): boolean;
-  // Runs in the page. Cheap; called on every debounced mutation.
-  snapshot(): PageSnapshot;
-  // Runs in Node. Pure.
-  recognize(snapshot: PageSnapshot): Poll | null;
-  // Returns Playwright locators for a response.
-  locate(page: Page, poll: Poll, response: Response): ResponseTargets;
-  // Resolves when the page shows the response was accepted.
-  confirm(page: Page, poll: Poll, response: Response): Promise<Confirmation>;
-}
-```
+   An error raised by the page is a failure. A failure is retried with
+   back-off (5 s, 10 s, 20 s, capped at 30 s), up to 5 attempts, each gated
+   on the page still showing the poll unanswered. If the failed attempt had
+   operated the page, the page is first reloaded to check with the server
+   that the response did not get through.
+9. **Record.** The fingerprint goes into the answered-polls file and the
+   result into the log.
 
-## Core data types
-
-```ts
-type PollKind = 'multiple_choice' | 'free_text' | 'unsupported';
-
-interface Poll {
-  fingerprint: string;       // stable hash, see TECHNICAL_DESIGN
-  siteId?: string;           // provider's own id if one can be read
-  kind: PollKind;
-  question: string;
-  options: { id: string; label: string }[];   // empty for free_text
-  alreadyAnswered: boolean;  // page shows a prior response
-  detectedAt: string;        // ISO 8601
-}
-
-type Response =
-  | { kind: 'choice'; optionId: string }
-  | { kind: 'text'; value: string }
-  | { kind: 'skip'; reason: string };
-
-interface Confirmation {
-  ok: boolean;
-  evidence: string;          // what on the page showed success
-  at: string;
-}
-```
-
-## Data flow
-
-1. **Start.** The scheduler fires at the window start (or immediately if
-   already inside it). The orchestrator asks `browser` for a ready page.
-2. **Arm.** `browser` navigates to the poll URL and injects the observer. The
-   observer debounces DOM mutations and calls back into Node with a
-   `PageSnapshot`. A slow timer also requests a snapshot, in case mutation
-   events are missed.
-3. **Recognize.** The adapter turns the snapshot into a `Poll`, or `null` when
-   the page is in a waiting state.
-4. **Dedupe.** The fingerprint is checked against the store. Known and
-   answered: stop. `alreadyAnswered` on the page: record it and stop.
-5. **Select.** The configured strategy produces a `Response`, or `skip`.
-6. **Submit.** The submitter acts on the locators from the adapter through
-   ordinary clicks and typing.
-7. **Confirm.** The submitter waits for the adapter's confirmation signal. On
-   success the fingerprint is written to the store. On timeout the page is
-   re-snapshotted before any retry, so a response that did land is not
-   repeated.
-8. **Log.** Every transition emits an event with a timestamp.
-9. **Stop.** At window end the orchestrator disarms the observer, flushes
-   logs, writes a session summary, and closes the browser (or leaves it open,
-   per config).
-
-## Orchestrator state machine
+## Loop states
 
 ```
-IDLE ──window opens──▶ CONNECTING ──page ready──▶ WATCHING
-                           ▲                         │ poll recognized
-                           │ nav/reload/crash        ▼
-                       RECOVERING ◀──error──── RESPONDING
-                           │                         │ confirmed / skipped
-                           └──────ready──────▶ WATCHING ◀──┘
-WATCHING ──window closes──▶ STOPPED
+CONNECTING ──page opened──▶ WATCHING ──poll to answer──▶ RESPONDING ──done──▶ WATCHING
+                              │  ▲
+              crash, hang,    │  │ page loaded again
+              wrong address,  ▼  │
+              network back ─▶ RECOVERING (back-off 1 s … 30 s, new tab if needed)
+
+any state ──Ctrl+C, window closed, optional time limit──▶ STOPPED
 ```
 
-`RECOVERING` uses capped exponential backoff. Entering it never clears the
-dedupe store.
+Only one pass of the loop runs at a time. A poll can therefore never be
+handled twice at once, however many change notices arrive while a response
+is in progress.
 
-## Proposed layout
-
-```
-src/
-  config/        session/      browser/      recognizer/
-  adapters/pollev/   adapters/mock/
-  dedupe/        selector/     submitter/    orchestrator/
-  logger/        ui/
-  index.ts
-mock-site/       # local polling page used by tests
-tests/unit/      tests/integration/
-docs/
-```
-
-## Runtime files (all git-ignored)
+## Runtime files
 
 | Path | Contents |
 | --- | --- |
-| `.data/profile/` | Chromium user data, including session cookies |
-| `.data/answered.json` | Fingerprints of answered polls |
-| `logs/session-<date>.jsonl` | Event log |
-| `traces/` | Optional Playwright traces captured on failure |
+| `.data/profile/` | Chromium profile (sign-in cookies). |
+| `.data/profile.lock` | Single-copy lock, holds the running process id. |
+| `.data/answered.json` | Answered-poll fingerprints with time and outcome. |
+| `.data/state.json` | Last link used. |
+| `logs/session-<date>_<time>.jsonl` | Event log. |
+| `logs/screenshots/` | Screenshots of unrecognised pages. |
+
+All are excluded from git.

@@ -1,0 +1,13 @@
+{
+  "response": {
+    "multipleChoice": "random",
+    "freeText": "fixed_text",
+    "fixedText": "value",
+    "delayMs": { "min": 2000, "max": 8000 }
+  },
+  "stopAfterMinutes": null,
+  "keepAwake": true,
+  "requireSignIn": true,
+  "notify": { "desktop": true, "sound": true },
+  "logging": { "redactQuestionText": false }
+}

@@ -1,66 +1,35 @@
-# UBGA10X Attendance Bot
+# Poll Bot
 
-A local desktop tool that watches a live web polling page, detects new poll
-questions as they appear, and responds to them through the page's normal
-interface. Poll Everywhere is the first compatibility target.
+A tool that runs on your own computer, watches a live Poll Everywhere page in
+its own browser window, and answers each poll that appears, once. You start it
+before class and stop it when class ends.
 
-> **Status: Phase 1 (documentation only).** No application code exists yet.
-> Nothing here is installable or runnable until Phase 2 is approved.
+- **Multiple choice:** it clicks a random option.
+- **Free text:** it types `value` and submits.
+- **Confirmation:** it waits for the page to confirm each response, never
+  answers the same poll twice, and recovers from reloads, crashes and network
+  drops.
 
-## Goals
+**Status: built and tested against a local copy of the Poll Everywhere page.
+Not yet tested against a real live poll.** The bot's handling of polls was
+written from Poll Everywhere's own page scripts and checked against a local
+mock of that page (see [docs/TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md)).
+Do the first real session as a dry run; see
+[First real session](#first-real-session).
 
-- Detect every poll that appears during a session window (typically
-  08:00–09:30) without a person watching the tab.
-- Extract the question, its options or input field, and the submit control.
-- Respond once per poll, confirm the response registered, and never
-  double-submit.
-- Survive reloads, navigation, slow rendering, and network drops.
-- Keep a structured, timestamped record of what happened.
-- Run entirely on the user's machine. No data leaves it other than the
-  responses sent to the polling site.
+## Use it only where it is allowed
 
-## Non-goals
+Use this only in sessions whose organiser allows automated participation.
+Polling services' terms may restrict automated access, and where a poll
+response counts as attendance, an automated response says you were there.
+That permission is yours to check. The bot does not get around CAPTCHAs,
+sign-in, location check-ins or other gates. When it meets one it stops and
+tells you.
 
-- Answering questions *correctly*. The response selector is pluggable, but the
-  default strategies are simple (see
-  [TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md#response-selection)).
-- Defeating CAPTCHAs, bot detection, or location/attendance verification.
-- Operating multiple accounts or responding on behalf of other people.
+## Setup (once)
 
-## Authorized use
-
-This tool is built for a session whose organizer has explicitly allowed
-automated participation, and for testing against the local mock polling site
-in this repository. Using it elsewhere may break a course's attendance policy
-or the polling provider's terms of service. Check before you point it at a
-real session. See [PRIVACY.md](docs/PRIVACY.md).
-
-## Recommended stack
-
-| Concern | Choice |
-| --- | --- |
-| Language / runtime | TypeScript on Node.js 24 LTS |
-| Browser automation | Playwright (Chromium, persistent profile, headed) |
-| Detection | In-page `MutationObserver` plus a slow fallback poll |
-| Configuration | One YAML file validated with Zod |
-| Logs | Pino, JSON Lines on disk |
-| State | A JSON file of answered-poll fingerprints |
-| Tests | Vitest (unit), Playwright Test against a local mock site |
-| UI | Terminal status first; local dashboard later |
-
-Rationale is in [TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md).
-
-## Prerequisites (for Phase 2 onward)
-
-- macOS, Windows, or Linux
-- Node.js 24 or newer and npm
-- About 500 MB of disk for Playwright's Chromium build
-- A Poll Everywhere participant link (`pollev.com/<presenter>`) for the
-  authorized session
-
-## Setup
-
-Not available yet. The intended flow once implemented:
+You need macOS, Windows or Linux and [Node.js](https://nodejs.org) 24 or newer.
+In a terminal, in this folder:
 
 ```bash
 npm install
@@ -70,28 +39,168 @@ npm install
 npx playwright install chromium
 ```
 
+Then sign in to Poll Everywhere in the bot's own browser. The bot does not use
+your everyday browser, so it is not signed in yet:
+
 ```bash
-npm run login
+npm run login -- pollev.com/yourpresenter
 ```
+
+A browser window opens. Click **Log in** in the sidebar and sign in with your
+school account. You can also close the cookie notice there. Then close the
+window. The sign-in is kept for next time.
+
+## Every class
+
+On a Mac, double-click **Start Poll Bot.command** in this folder. On any
+system, run:
 
 ```bash
 npm start
 ```
 
-`login` opens the bot's own browser profile so you can sign in by hand once.
-`start` then monitors during the configured window.
+It asks for the poll link. Paste it, or press Enter to reuse the last one. You
+can also give the link directly:
 
-## Documentation
+```bash
+npm start -- pollev.com/yourpresenter
+```
+
+A browser window opens on the poll page and the terminal shows what the bot
+is doing:
+
+```
+08:01:12  Watching — no poll is showing right now.
+08:14:03  New poll: "Which of these is a prime number?" (4 options)
+08:14:08  Answered "7" — confirmed (the page announced the response was saved; "7" is marked as your vote (status: "Response recorded")).
+```
+
+**The bot runs until you stop it.** There is no timer. To stop it, either:
+
+- press **Ctrl+C** in the terminal, or
+- close the bot's browser window.
+
+When it stops it prints a summary: polls seen, answered, already answered,
+not answered, and the log file it wrote.
+
+Keep the laptop open and awake while the bot runs. On a Mac the bot stops the
+computer from going to sleep by itself, but closing the lid still puts it to
+sleep. Leave the bot's browser window open somewhere on screen, even behind
+other windows. Don't minimise it: macOS may slow down apps whose windows are
+all minimised.
+
+## When the bot needs you
+
+It shows a desktop notification and a message in the terminal when:
+
+- **You are not signed in.** It will not answer while signed out, because the
+  responses would not be credited to you. Sign in in the bot's window and it
+  carries on by itself.
+- **A dialog or sign-in page is in the way.** Deal with it in the bot's window.
+- **A poll is of a type it does not answer:** rank order, survey, clickable
+  image, Q&A, or attendance check-in. Answer that one yourself in the bot's
+  window.
+- **A poll could not be answered** after several tries.
+- **The page shows something it does not recognise.** It first reloads the
+  poll page once, then tells you. A screenshot is saved next to the log.
+
+You can always click in the bot's window yourself. If you answer a poll by
+hand, the bot sees that and leaves it alone.
+
+## Options
+
+Flags go after `--`, for example `npm start -- pollev.com/x --dry-run`.
+
+| Flag | What it does |
+| --- | --- |
+| `--dry-run` | Watch and log polls, but never click or type. |
+| `--choice <how>` | Multiple choice: `random` (default), `first`, `last`, `skip`. |
+| `--free-text <how>` | Free text: `fixed_text` (default), `echo_question`, `skip`. |
+| `--text <string>` | What to type for free text. Default: `value`. |
+| `--stop-after <minutes>` | Stop by itself after this long. Default: never. |
+| `--chrome` | Use your installed Google Chrome instead of the bundled browser. |
+| `--headless` | Run the browser without a window. |
+| `--allow-guest` | Answer even when not signed in. Responses will be anonymous. |
+| `--no-keep-awake` | Let the computer sleep as it normally would. |
+| `--config <file>` | Read settings from this file. |
+| `--login` | Open the bot's browser for signing in, and do nothing else. |
+
+For lasting changes, copy `pollbot.config.example.json` to
+`pollbot.config.json` and edit it. Every setting, with its default and
+meaning, is listed in [docs/TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md#settings).
+
+## First real session
+
+Detection of a real active poll has only been checked against Poll
+Everywhere's code and a faithful mock, not against a live poll. So:
+
+1. Run a dry run during a real session and watch both the bot's window and
+   the terminal:
+
+   ```bash
+   npm run dry-run -- pollev.com/yourpresenter
+   ```
+
+   Each poll should produce a `New poll:` line and a
+   `Dry run: would answer ...` line. Answer the polls yourself as usual.
+2. If that looks right, run normally next time and watch the first poll or
+   two. Afterwards, compare the summary with what the presenter showed, and
+   with your **History** page on Poll Everywhere.
+3. If something looks wrong, the log file in `logs/` records every page state
+   the bot saw (`page.state` events). It contains the questions and options
+   unless you turned on `logging.redactQuestionText`.
+
+## Trying it without a real session
+
+A local mock of the Poll Everywhere page comes with the project:
+
+```bash
+npm run mock
+```
+
+Open the presenter controls it prints (http://127.0.0.1:4173/presenter). In
+another terminal, point the bot at the mock:
+
+```bash
+npm start -- http://127.0.0.1:4173/pollev/demo
+```
+
+From the controls page you can show polls, lock them, clear responses, reload
+the participant page, drop the connection and make responses fail.
+
+## Files the bot creates
+
+All of these stay on your computer and are excluded from git.
+
+| Path | Contents |
+| --- | --- |
+| `.data/profile/` | The bot's browser profile, including your Poll Everywhere sign-in. Treat it like a password. |
+| `.data/answered.json` | Fingerprints of polls answered, so a restart does not answer twice. |
+| `.data/state.json` | The last link you used. |
+| `logs/session-*.jsonl` | One file per session: every event, timestamped. |
+| `logs/screenshots/` | Screenshots of pages the bot did not recognise. |
+
+Delete `.data/` to sign out and forget everything. Logs older than 30 days are
+removed automatically. See [docs/PRIVACY.md](docs/PRIVACY.md).
+
+## Development
+
+```bash
+npm test
+```
+
+That runs the type check, the unit tests and the integration tests. The
+integration tests drive the bot in a real (headless) browser against the mock
+site. A longer scripted session with faults runs with `npm run test:soak`. It
+takes about 3 minutes; set `SOAK_MINUTES=90` for a full-length run.
 
 | Document | Contents |
 | --- | --- |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, boundaries, data flow |
-| [docs/TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md) | Options evaluated and the chosen approach |
-| [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | Phases, milestones, acceptance criteria, open questions |
-| [docs/TESTING.md](docs/TESTING.md) | Test levels, mock polling site, failure scenarios |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components and how a poll flows through them |
+| [docs/TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md) | How the page is read, the rules for answering and not answering twice, recovery, settings |
+| [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | What is done, what remains, open questions |
+| [docs/TESTING.md](docs/TESTING.md) | The tests, the mock site, failure scenarios |
 | [docs/PRIVACY.md](docs/PRIVACY.md) | Permissions, local data, credentials, logging |
 
-## Repository state at Phase 1
-
-The repository was empty when this documentation was written: no commits, no
-source, no prior technology decisions. Everything in `docs/` is a proposal.
+Stack: TypeScript run directly by Node.js 24 (no build step), and Playwright
+for the browser. Playwright is the only runtime dependency.

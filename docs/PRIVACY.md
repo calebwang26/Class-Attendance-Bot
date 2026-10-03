@@ -1,102 +1,96 @@
-# Privacy, Permissions, and Data Handling
+# Privacy, Permissions and Data Handling
 
 ## Summary
 
-The tool runs locally, acts as one person on that person's own account, and
-sends nothing anywhere except the poll responses it submits to the polling
-site through the page. It has no telemetry and no remote backend.
+The bot runs on your computer, acts only as you, on your own account, in its
+own browser, and sends nothing anywhere except what the poll page itself
+sends when a response is submitted. It has no telemetry, no server of its
+own, and needs no API keys.
 
-## Authorized use
+## Use it only where it is allowed
 
-- Use it only in sessions where the organizer permits automated
-  participation, and against the local mock site.
-- Polling providers' terms of service may restrict automated access. The user
-  is responsible for checking that their use is allowed.
-- Where a poll response is used as proof of physical presence, an automated
-  response says something untrue unless the organizer has allowed it. That
-  permission is the user's to confirm.
-- One user, one account. The tool does not manage multiple identities or
-  respond for other people.
-- The tool does not attempt to get around CAPTCHAs, bot detection, location
-  checks, or rate limits. When it meets one it stops and tells the user.
+- Use it only in sessions whose organiser permits automated participation,
+  and against the local mock site.
+- Polling services' terms may restrict automated access. Checking that your
+  use is allowed is up to you.
+- Where a poll response counts as attendance, an automated response says you
+  were there. That permission is yours to confirm.
+- One person, one account. The bot does not manage other identities or
+  respond for anyone else.
+- It does not get around CAPTCHAs, sign-in, registration, location check-ins
+  or rate limits. When it meets one it stops and tells you.
 
-## Permissions
+## Permissions it uses
 
 | Permission | Why | Scope |
 | --- | --- | --- |
-| Launch a browser | To load and operate the poll page | A dedicated Chromium profile under `.data/profile/`, separate from the user's everyday browser |
-| Network | To reach the configured poll URL | Only the target site and what it loads; the mock server binds to `127.0.0.1` |
-| File system | Config, logs, dedupe store, profile | The project directory only |
-| Notifications (optional) | Alert the user to failures | OS notification permission |
-| Prevent sleep (optional) | Keep running through the session window | Only during the window |
+| Start a browser | Load and operate the poll page | A separate Chromium profile in `.data/profile/`, not your everyday browser |
+| Network | Reach the poll link | Only what the poll page itself loads |
+| Files | Settings, logs, answered-polls record, profile | This project folder only (unless you point settings elsewhere) |
+| Notifications (macOS) | Tell you when it needs you | Through the built-in `osascript` |
+| Prevent idle sleep (macOS) | Keep running through class | The built-in `caffeinate`, only while the bot runs |
 
-Not requested: screen recording, accessibility control of other apps,
-microphone, camera, location, or access to the user's main browser profile,
-history, or saved passwords.
+It does not use screen recording, accessibility control of other apps,
+microphone, camera, or location. It never reads your everyday browser's
+profile, history or saved passwords. It never grants a site permission to
+your location.
 
 ## Credentials
 
-- The tool never asks for, stores, logs, or types a password.
-- Sign-in is done by the user, by hand, in the tool's browser window. The
-  resulting session cookies live in `.data/profile/`, which Chromium manages.
-- `.data/` is git-ignored. Anyone with read access to that directory can act
-  as the signed-in user on the polling site, so it should be treated like a
-  password: not synced to cloud storage, not shared, not attached to bug
-  reports.
-- A `logout` command will delete the profile directory.
-- No API keys are needed. If a later feature needs one, it goes in `.env`
-  (git-ignored) and is never written to logs.
+- The bot never asks for, stores, logs or types a password. You sign in
+  yourself, in the bot's browser window (`npm run login`).
+- The sign-in lives as cookies in `.data/profile/`, managed by the browser.
+  Anyone who can read that folder can act as you on the poll site, so treat
+  it like a password: do not share it, sync it, or attach it to a bug report.
+- To sign out and remove it, delete `.data/`.
 
-## Data stored locally
+## What is stored, and for how long
 
-| Data | Location | Contents | Retention |
+| Data | Where | Contents | Kept |
 | --- | --- | --- | --- |
-| Browser profile | `.data/profile/` | Cookies, local storage, cache | Until `logout` |
-| Dedupe store | `.data/answered.json` | Fingerprint hash, timestamp, outcome | Pruned after a configurable number of days (default 30) |
-| Event logs | `logs/*.jsonl` | Timestamps, states, question text, chosen option, errors | Rotated daily; default 30 days |
-| Failure evidence | `traces/`, `screenshots/` | Page screenshots and Playwright traces on error | Default 7 days |
-| Config | `config.yaml` | Target URL, schedule, strategy | User-managed |
+| Browser profile | `.data/profile/` | Cookies, local storage, cache of the poll site | Until you delete it |
+| Answered polls | `.data/answered.json` | Per poll: fingerprint, time, outcome, page address, question and response (question and response left out when redaction is on) | Entries older than 30 days are deleted |
+| Last link | `.data/state.json` | The poll link you last used | Until replaced |
+| Lock | `.data/profile.lock` | The running bot's process id | Removed when the bot stops |
+| Session logs | `logs/session-*.jsonl` | Timestamped events: states seen, polls detected (question and options), responses, errors, recoveries | Deleted after 30 days |
+| Screenshots | `logs/screenshots/` | Only of pages the bot did not recognise. May show your name if the page does. | Deleted after 7 days |
 
-All of these are excluded by `.gitignore`.
+Everything above is excluded from git by `.gitignore`.
 
-## Logging practices
+## Logging rules
 
-- Structured JSON Lines, one event per line, each with an ISO 8601 timestamp,
-  session id, and event name.
-- **Never logged:** cookies, tokens, request headers, passwords, full page
-  HTML at `info` level.
-- **Logged by default:** question text and the response chosen, because they
-  are what makes the log useful. `logging.redactQuestionText: true` replaces
-  question and option text with their hashes.
-- Other participants' content that appears on the page (names, free-text
-  answers shown on a results view) is not extracted or logged. The recognizer
-  reads only the question, the options, and the user's own response state.
-- Screenshots can contain whatever is on the page, including the user's name.
-  They are taken only on `unknown` states and failures, can be turned off, and
-  expire quickly.
-- Playwright traces include network payloads and are therefore off by default
-  outside tests.
-- `debug` level may include DOM excerpts. It is opt-in and should not be
-  shared without review.
+- **Never logged, even if passed in by mistake:** cookies, tokens,
+  passwords, authorisation headers, request headers. Fields with those names
+  are dropped.
+- **Logged by default:** question text, option labels and the response sent,
+  because that is what makes the log useful for checking a session.
+- **With `logging.redactQuestionText: true`:** question text, option labels,
+  responses, page text and the evidence quotes are stored as short SHA-256
+  hashes, and the human-readable message is left out of the file. The
+  answered-polls file then omits question and response. The terminal still
+  shows the text.
+- **Other participants' content is not read.** That includes their names and
+  their answers, if shown. The bot reads only the question, the options, the
+  status line and your own responses.
+- **The page's text** is logged only when the page is unrecognised, and is
+  limited to 300 characters of the activity area.
+- **The page's own requests** are watched in memory, to know when the page
+  is sending a response and how it ended. Only the method, address and
+  reply status are used. Request and reply contents are never read, stored
+  or logged.
 
-## Data leaving the machine
+## Data leaving your computer
 
 | Destination | What | When |
 | --- | --- | --- |
-| The polling site | Normal page traffic and the user's responses | During a session |
-| Playwright's download host | Browser download request | Once, at `playwright install` |
-| npm registry | Package downloads | At install |
+| The poll site | Normal page traffic, and your responses through the page's own controls | While the bot runs |
+| Playwright's download server | The browser download | Once, at `npx playwright install chromium` |
+| npm registry | Packages | At `npm install` |
 
-Nothing else. If phone notifications are added later, that would introduce a
-third-party service; it will be opt-in and documented here before it ships.
+Nothing else. In particular, poll questions are not sent to any AI or other
+service.
 
-## Local dashboard (if built)
+## Removing everything
 
-Bound to `127.0.0.1` only, on a random or configured port, with no remote
-access. It displays status and recent events and offers pause/resume. It does
-not expose the profile or raw logs for download.
-
-## Deleting everything
-
-Removing `.data/`, `logs/`, `traces/`, and `screenshots/` removes all runtime
-data the tool has created.
+Delete `.data/` and `logs/`. That removes the sign-in, the answered-polls
+record, the last link and all logs and screenshots.
