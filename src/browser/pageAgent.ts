@@ -378,6 +378,105 @@ export function installPageAgent(options: { quietMs: number }): void {
     return snapshot;
   };
 
+  // ---------------------------------------------------------------- Poll Everywhere 2.0
+
+  // Server-rendered (Rails and Turbo). Read from the live page: the activity sits in
+  // #respond_actions_question_<id> inside .ui-format; each multiple-choice option is
+  // a button[role=radio] (class ui-format__choice-button) in its own form, and
+  // clicking it submits the vote; the header says "Not signed in" for a guest.
+  const isPollEverywhere2 = (): boolean => {
+    const host = window.location.hostname.toLowerCase();
+    return host === 'pe.app' || host.endsWith('.pe.app') || document.querySelector('.ui-participant') !== null;
+  };
+
+  const pollEverywhere2 = (base: PageSnapshot): PageSnapshot => {
+    const snapshot = base;
+    snapshot.adapter = 'pollev2';
+    const root = document.querySelector('.ui-participant');
+    snapshot.scopeFound = root !== null;
+
+    const sources = all(document, 'turbo-cable-stream-source');
+    if (sources.length > 0) {
+      snapshot.pushConnected = sources.every((source) => {
+        let state: unknown;
+        try {
+          state = (source as Element & { channel?: { state?: unknown } }).channel?.state;
+        } catch {
+          state = undefined;
+        }
+        return typeof state === 'string' ? state === 'connected' : source.hasAttribute('connected');
+      });
+    }
+
+    const header = root?.querySelector('header') ?? null;
+    if (header) snapshot.signedIn = !/Not signed in/i.test(textOf(header));
+
+    if (!root) return snapshot;
+    snapshot.scopeText = textOf(root).slice(0, 600);
+
+    const actions = root.querySelector('[id^="respond_actions_question_"]');
+    const format = actions?.closest('.ui-format') ?? root.querySelector('.ui-format');
+    if (!format) return snapshot;
+
+    const poll = emptyPoll();
+    const idMatch = /(\d+)$/.exec(actions?.id ?? '');
+    poll.siteId = idMatch?.[1] ?? null;
+    const formatClass = Array.from(format.classList).find((c) => c.startsWith('ui-format-'));
+    poll.siteType = formatClass ? formatClass.slice('ui-format-'.length) : null;
+    poll.question = textOf(root.querySelector('.ui-question-title'));
+    poll.mountRef = refFor(actions ?? format);
+    const formatText = textOf(format);
+    poll.answeredMarker = GENERIC_ANSWERED.test(formatText);
+    poll.closedMarker = GENERIC_CLOSED.test(formatText);
+
+    const choices = (all(format, '.ui-format__choice-button, [role="radio"]') as HTMLElement[]).filter(isVisible);
+    if (choices.length > 0) {
+      poll.kind = 'multiple_choice';
+      poll.options = choices.map((button, index) => {
+        const label = textOf(button.querySelector('.ui-format__choice-label')) || textOf(button) || `Option ${index + 1}`;
+        return {
+          ref: refFor(button),
+          label,
+          disabled: (button as HTMLButtonElement).disabled === true || button.getAttribute('aria-disabled') === 'true',
+          selected: button.getAttribute('aria-checked') === 'true',
+        };
+      });
+      const counts = new Map<string, number>();
+      for (const option of poll.options) counts.set(option.label, (counts.get(option.label) ?? 0) + 1);
+      poll.options.forEach((option, index) => {
+        if ((counts.get(option.label) ?? 0) > 1) option.label = `${option.label} (${index + 1})`;
+      });
+      snapshot.poll = poll;
+      return snapshot;
+    }
+
+    const textarea = (all(format, 'textarea') as HTMLTextAreaElement[]).find(isVisible) ?? null;
+    if (textarea) {
+      poll.kind = 'free_text';
+      poll.textInput = {
+        ref: refFor(textarea),
+        disabled: textarea.disabled,
+        value: textarea.value,
+        maxLength: textarea.maxLength > 0 ? textarea.maxLength : null,
+      };
+      const submit = textarea.form?.querySelector('[type="submit"]') as HTMLButtonElement | HTMLInputElement | null;
+      if (submit && isVisible(submit)) {
+        poll.submit = {
+          ref: refFor(submit),
+          disabled: submit.disabled,
+          label: textOf(submit) || clean((submit as HTMLInputElement).value) || 'Submit',
+        };
+      }
+      snapshot.poll = poll;
+      return snapshot;
+    }
+
+    poll.kind = 'unsupported';
+    poll.unsupportedType = poll.siteType ?? 'unknown';
+    snapshot.poll = poll;
+    return snapshot;
+  };
+
   // ---------------------------------------------------------------- Generic pages
 
   const GENERIC_ANSWERED =
@@ -532,6 +631,7 @@ export function installPageAgent(options: { quietMs: number }): void {
     };
     if (!document.body) return base;
     base.blockingDialog = blockingDialog();
+    if (isPollEverywhere2()) return pollEverywhere2(base);
     return isPollEverywhere() ? pollEverywhere(base) : generic(base);
   };
 

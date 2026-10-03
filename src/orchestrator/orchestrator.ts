@@ -4,7 +4,7 @@ import type { Config } from '../config/config.ts';
 import { decide, type PreviousAnswer, type Recheck, type SkipReason } from '../dedupe/decide.ts';
 import type { AnsweredStore } from '../dedupe/store.ts';
 import type { Logger } from '../logger/logger.ts';
-import { locationKey, recognize, sameLocation, sameOrigin, type RecognizeOptions } from '../recognizer/recognize.ts';
+import { locationKey, recognize, sameLocation, sameOrigin, samePresenter, type RecognizeOptions } from '../recognizer/recognize.ts';
 import { chooseResponse } from '../selector/select.ts';
 import { Submitter } from '../submitter/submit.ts';
 import { normalizeText } from '../recognizer/fingerprint.ts';
@@ -552,6 +552,8 @@ export class Orchestrator {
    * the same site that has the activity area; elsewhere it is the exact link.
    */
   private onTarget(snapshot: PageSnapshot): boolean {
+    // Poll Everywhere 2.0 serves the presenter's page from pe.app, whichever address was given.
+    if (snapshot.adapter === 'pollev2' && snapshot.scopeFound && samePresenter(snapshot.url, this.targetUrl)) return true;
     if (!sameOrigin(snapshot.url, this.targetUrl)) return false;
     if (snapshot.adapter === 'pollev' && snapshot.scopeFound) return true;
     return sameLocation(snapshot.url, this.targetUrl);
@@ -1012,7 +1014,12 @@ export class Orchestrator {
       confirmation = await this.submitter.submit(
         poll,
         plan,
-        { signals: snapshot.signals, savedResponses: snapshot.poll?.savedResponses ?? null, docStartedAt: snapshot.docStartedAt },
+        {
+          signals: snapshot.signals,
+          savedResponses: snapshot.poll?.savedResponses ?? null,
+          docStartedAt: snapshot.docStartedAt,
+          startedAt,
+        },
         this.abort.signal,
       );
     } catch (error) {

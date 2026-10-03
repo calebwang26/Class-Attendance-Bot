@@ -57,7 +57,7 @@ export class BrowserMonitor {
   /** Requests in flight that send something (anything but GET/HEAD/OPTIONS), with their start times. */
   private readonly writes = new Map<Request, number>();
   /** How recent sending requests ended: HTTP status, or null for a network failure. */
-  private readonly writeLog: { start: number; end: number; status: number | null }[] = [];
+  private readonly writeLog: { start: number; end: number; status: number | null; path: string }[] = [];
   private readonly config: Config;
   private readonly profileDir: string;
   private readonly events: MonitorEvents;
@@ -190,7 +190,13 @@ export class BrowserMonitor {
       const start = this.writes.get(request);
       if (start === undefined) return;
       this.writes.delete(request);
-      this.writeLog.push({ start, end: Date.now(), status });
+      let where = '';
+      try {
+        where = new URL(request.url()).pathname;
+      } catch {
+        // Keep the empty path.
+      }
+      this.writeLog.push({ start, end: Date.now(), status, path: where });
       if (this.writeLog.length > 50) this.writeLog.splice(0, this.writeLog.length - 50);
     };
     // A request that sent something counts as answered once the reply's status arrives.
@@ -243,9 +249,17 @@ export class BrowserMonitor {
    * How the requests that sent something since `since` (epoch ms) ended. A
    * request still in flight counts as `inFlight`; one that got no reply as
    * `networkFailures`; one answered with an HTTP status 400 or above as `rejected`.
+   * `acceptedPaths` lists the address paths of the accepted ones.
    */
-  sendsSince(since: number): { total: number; inFlight: number; networkFailures: number; rejected: number; accepted: number } {
-    const result = { total: 0, inFlight: 0, networkFailures: 0, rejected: 0, accepted: 0 };
+  sendsSince(since: number): {
+    total: number;
+    inFlight: number;
+    networkFailures: number;
+    rejected: number;
+    accepted: number;
+    acceptedPaths: string[];
+  } {
+    const result = { total: 0, inFlight: 0, networkFailures: 0, rejected: 0, accepted: 0, acceptedPaths: [] as string[] };
     for (const startedAt of this.writes.values()) {
       if (startedAt >= since) {
         result.total += 1;
@@ -257,7 +271,10 @@ export class BrowserMonitor {
       result.total += 1;
       if (entry.status === null) result.networkFailures += 1;
       else if (entry.status >= 400) result.rejected += 1;
-      else result.accepted += 1;
+      else {
+        result.accepted += 1;
+        result.acceptedPaths.push(entry.path);
+      }
     }
     return result;
   }

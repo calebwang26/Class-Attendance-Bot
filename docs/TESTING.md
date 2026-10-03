@@ -49,6 +49,12 @@ page does, as read from Poll Everywhere's own scripts:
 **`/generic/<room>`** is a plain page with radio buttons and a Submit button,
 or a text box.
 
+**`/pe2/<presenter>`** imitates "Poll Everywhere 2.0" (pe.app): drawn by the
+server with the markup read from the live page, each option a button in its own
+form posting to `/a/questions/<id>/responses/<choice>` (303 on success, 422 or
+500 on failure), and a reload whenever the presenter changes something. After a
+free-text response it shows nothing, the harder case.
+
 **`/presenter`** is a control page for playing the presenter.
 
 **For tests**, the server object exposes:
@@ -98,6 +104,7 @@ The real waiting page, as captured, is in
 | `dedupe.test.ts` | Reload after answering; restart after answering; restart before answering; burst of page changes; answered by hand; answered on another device while the page still loads it; presenter clears responses (one per round); poll shown again without clearing; shown again after clearing; identical wording, different polls; redraws; no click while earlier responses are loading; a page that forgets a standing response triggers a reload check, not a second response (multiple choice and free text). |
 | `recovery.test.ts` | Self-reload; navigation away; crashed tab; frozen tab; tab closed stops the bot; network outage; network drop just after a poll appears; silently dead push channel; push channel down; push channel drop and recovery; site unreachable at start; JavaScript alert. |
 | `gates.test.ts` | Signed out: asks and answers nothing, then carries on; `--allow-guest`; sign-in page untouched; modal dialog; covered option answered by keyboard; covered free text; cookie notice left alone; tab buttons never taken for a poll; pinned tab recovered; rank order, survey, clickable image and Q&A reported and untouched; competition; locked then unlocked; locked during the delay; unrecognised controls reloaded, then reported. |
+| `pe2.test.ts` | Poll Everywhere 2.0: multiple choice answered once and confirmed by the server's reply; free text sent once though not shown; successive polls; server error retried; lost reply checked, not resent; earlier vote left alone; signed out; closed; unsupported type. |
 | `generic.test.ts` | Plain page: radio buttons with Submit; text box; a page that says nothing after submitting; failed submission retried; closed poll; identical wording; unrelated buttons never clicked. |
 | `fidelity.test.ts` | Uncommon real-page behaviours: a page that never reloads, or fails to reload, your earlier vote (no second vote; you are told); a re-vote the page fails to show, caught by the periodic reload; equations still loading; a hidden title; options with identical labels; a competition question (no delay); a full poll; one vote per option; a rejection without an error event; an option edited while open. |
 | `review.test.ts` | Regression tests for an independent review of the control logic: a lost reply (multi-response and single-vote polls, and with a network drop) leads to a server check, not a second vote or a false failure; a poll activated during a reload (with and without replay); a redraw while typing; a silent outage; a slow server whose vote is drawn before it is saved; a vote made by hand after a give-up is not claimed; element references change across reloads. |
