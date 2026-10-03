@@ -1,0 +1,69 @@
+<!doctype html>
+<!--
+  Markup of the real Poll Everywhere participant page with no active poll,
+  captured read-only on 2026-10-02 as a signed-out guest. Scrubbed: the
+  presenter's name is replaced by "examplepresenter", the signed stream name
+  and numeric ids are replaced by placeholders, icons are dropped, and no
+  scripts or stylesheets are included (so elements the site hides with CSS
+  classes are visible here, which is the harder case for the recogniser).
+-->
+<html class="h-full" lang="en">
+<head>
+<meta charset="utf-8">
+<title>examplepresenter’s presentation | Poll Everywhere</title>
+</head>
+<body class="h-full w-full grid bg-black gap-0 grid-cols-1 grid-rows-[1fr_56px] md:grid-cols-[calc(78px+env(safe-area-inset-left))_1fr] md:grid-rows-1" data-participate="">
+<div id="skipnav" class="absolute top-0 left-0 outline-none"><ul><li><a href="#main-content">skip to main content</a></li><li><a href="#navigation">skip to side bar navigation</a></li></ul></div>
+<turbo-frame id="turbo-flash" class="fixed top-4 right-4 ml-4"></turbo-frame>
+<div aria-label="Accept our Cookie Policy" class="fixed top-4 right-4 mt-safe ml-4 z-[1060] overflow-y-auto max-h-full min-w-80 max-w-[min(500px,90%)]" role="region" tabindex="0"> <div id="cookie-consent-banner" class="relative flex items-start rounded-sm shadow p-4 mb-4 overflow-hidden bg-white" data-controller="dismissable" role="status" aria-label="info notification"><div class="absolute h-full top-0 left-0 w-1 text-blue-500 bg-current"></div> <div class="flex flex-col flex-auto break-words"><div class="font-semibold leading-6 mb-2 truncate">Accept our Cookie Policy</div><div><p> This website and its third-party tools use cookies and data storage in the United States. Learn more about why this is required in our <a target="_blank" class="text-blue-500 font-semibold" href="https://www.polleverywhere.com/privacy-policy">Privacy Policy</a> </p> <p class="mt-2"> By continuing to browse, you accept the use of cookies and the data protection policy. </p> </div><div class="flex justify-end mt-4 space-x-4"><button name="button" type="button" data-dismiss="true" data-action="dismissable#dismiss" data-controller="material--mdc-ripple" class="mdc-button mdc-button--text mdc-ripple-upgraded"><span class="mdc-button__ripple"></span><span class="mdc-button__touch"></span><span class="mdc-button__label">Dismiss</span></button><button name="button" type="button" data-agree="true" data-action="dismissable#dismiss" data-controller="material--mdc-ripple" class="mdc-button mdc-button--unelevated mdc-ripple-upgraded"><span class="mdc-button__ripple"></span><span class="mdc-button__touch"></span><span class="mdc-button__label">Agree</span></button></div></div></div></div>
+<nav class="z-30 bg-participate-bg-header min-w-full pb-safe md:flex-row md:min-h-full md:w-14 md:py-3 md:pl-safe-or-0 md:pt-safe" data-turbo="false" id="navigation"> <div class="flex w-full flex-row justify-center md:flex-col md:justify-start"> <a class="px-2 py-3 md:flex flex-col items-center hidden" aria-label="Poll Everywhere" href="/home"> </a><a class="flex flex-col items-center relative group w-full px-3 py-2 md:px-4 md:py-3 text-xs text-participate-text-header hover:bg-participate-bg opacity-60" href="/home"> <span>Home</span></a> <a class="flex flex-col items-center relative group w-full px-3 py-2 md:px-4 md:py-3 text-xs text-participate-text-header hover:bg-participate-bg opacity-60" href="/response_history"> <span>History</span></a> <a class="flex flex-col items-center relative group w-full px-3 py-2 md:px-4 md:py-3 text-xs text-participate-text-header hover:bg-participate-bg opacity-60" data-turbo="false" href="/registrations"> <span>Registration</span></a> <a class="flex flex-col items-center relative group w-full px-3 py-2 md:px-4 md:py-3 text-xs text-participate-text-header hover:bg-participate-bg opacity-60" data-turbo="false" href="/login"> <span>Log in</span></a> </div> </nav>
+<main class="bg-participate-bg text-participate-text overflow-y-auto w-full h-full mt-safe col-start-1 row-start-1 md:col-start-2 md:row-start-1" id="main-content"><div data-action="page-visible:resume-from-background-&gt;location#refresh" data-controller="page-visible location">
+<turbo-cable-stream-source channel="ActivationChannel" signed-stream-name="SCRUBBED" connected=""></turbo-cable-stream-source>
+</div>
+<div class="sticky top-0 z-10 flex items-center justify-between h-9 px-safe-or-8 space-x-2 bg-neutral-200 text-neutral-600 font-semibold hidden" data-controller="participate--presenter-bar" data-participate--presenter-bar-action-sheet-outlet="#participant_screen_name div[data-controller='action-sheet']" data-participate--presenter-bar-logout-value="false" data-participate--presenter-bar-screen-name-path-value="/examplepresenter/screen_name?initial=true" data-participate--presenter-bar-screen-names-enabled-value="false" data-participate--presenter-bar-tabs-value="false" id="participate_presenter_bar">
+<div class="flex-1"></div>
+<div aria-label="Switch between live and pinned activities" class="hidden flex self-end justify-between flex-grow flex-shrink space-x-1 basis-[200px] min-w-[200px]" data-participate--presenter-bar-target="tabs" role="tablist">
+<form style="flex:1;min-width:100px;max-width:min(240px,45%);" class="button_to" method="get" action="/examplepresenter/active"><button id="presenter_bar_current_tab" role="tab" class="w-full px-2 py-1 rounded-t-md text-ellipsis overflow-hidden whitespace-nowrap aria-selected:bg-participate-bg aria-selected:text-participate-text" data-tab="current" data-turbo-frame="active_tab_content" aria-selected="true" aria-describedby="tab-current-aria-desc" type="submit">Waiting…</button></form>
+<form style="flex:1;min-width:100px;max-width:min(240px,45%);" class="button_to" method="get" action="/examplepresenter/pinned"><button id="presenter_bar_pinned_tab" role="tab" class="w-full px-2 py-1 rounded-t-md text-ellipsis overflow-hidden whitespace-nowrap aria-selected:bg-participate-bg aria-selected:text-participate-text" data-tab="pinned" data-turbo-frame="active_tab_content" aria-selected="false" aria-describedby="tab-pinned-aria-desc" type="submit">
+
+<span></span>
+</button></form></div>
+<div class="flex-1"></div>
+<div class="hidden" data-participate--presenter-bar-target="screenName" id="participant_screen_name">
+<div data-controller="action-sheet"><button data-action="action-sheet#open:prevent" data-action-sheet-src-param="/examplepresenter/screen_name" type="button">
+<div class="inline mr-1" data-participate--presenter-bar-target="respondingAs">
+Responding as
+</div>
+<div class="rounded-full border-2 border-current w-6 h-6 inline-flex items-center justify-center text-sm uppercase" data-participate--presenter-bar-target="initials">
+--
+</div>
+</button>
+<div data-action-sheet-target="frameModal" data-controller="frame-modal" data-action="keyup@document-&gt;frame-modal#closeOnEscapeKey" hidden="hidden" class="hidden absolute inset-0 flex justify-end w-full h-full z-10 action-sheet-frame-action_sheet-00000000-0000-0000-0000-000000000000"><div class="scrim fixed h-full w-full bg-black opacity-60" data-action="click-&gt;frame-modal#hide"></div><turbo-frame id="action_sheet-00000000-0000-0000-0000-000000000000" role="dialog" aria-modal="true" aria-label="Screen name configuration" data-frame-modal-target="frame" data-action-sheet-target="frame" data-action="turbo:frame-load-&gt;frame-modal#closeOnSuccess" class="fixed flex flex-col h-full w-[32rem] max-w-full sm:rounded-l-lg box-shadow-lg overflow-y-auto p-6 pr-safe-or-6 bg-participate-bg text-participate-text pb-20 md:pb-6"><p>Loading...</p></turbo-frame></div></div></div>
+<span class="hidden" id="tab-current-aria-desc">
+Current live activity for examplepresenter. Select this tab to show the activity below
+</span>
+<span class="hidden" id="tab-pinned-aria-desc">
+Pinned, and always available, Q&amp;A for examplepresenter. Select this tab to show the activity below
+</span>
+</div>
+
+<turbo-frame class="block" aria-live="polite" id="active_tab_content"><turbo-frame id="participate_presenter_examplepresenter" src=""><div class="flex flex-col justify-start px-safe-or-8 py-4 max-w-full md:flex-row">
+<div class="mr-8">
+<img class="w-80 max-w-full max-h-80" alt="Placeholder logo" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==">
+</div>
+<div class="flex flex-col space-y-4 pt-4 [overflow-wrap:anywhere]">
+<h1 class="text-xl font-semibold">
+Waiting for examplepresenter's presentation to begin...
+</h1>
+<p>
+examplepresenter's presentation is underway. As soon as the activity is active, you’ll see it on the screen here. Stay put.
+</p>
+<p>Poll Everywhere helps boost engagement during remote meetings, virtual trainings, and online conferences.</p>
+</div>
+</div>
+
+</turbo-frame>
+</turbo-frame><div class="hidden" data-controller="participate--recent-save" data-participate--recent-save-presenter-value="examplepresenter"></div>
+</main>
+</body>
+</html>

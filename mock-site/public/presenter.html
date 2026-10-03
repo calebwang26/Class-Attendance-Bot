@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mock presenter controls</title>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="plain">
+<h1>Mock presenter controls</h1>
+<p>Use this page to play the presenter. Participants (and the bot) watch
+<a href="/pollev/demo">/pollev/demo</a> or the plain version at <a href="/generic/room">/generic/room</a>.</p>
+
+<h2>Show a poll</h2>
+<form id="activate" onsubmit="return false">
+  <label>Question <input type="text" id="title" value="Which planet is closest to the sun?"></label>
+  <label>Options, one per line (leave empty for a free-text poll)</label>
+  <textarea id="options" rows="4">Mercury
+Venus
+Earth
+Mars</textarea>
+  <div>
+    <button type="button" data-act="mc">Show as multiple choice</button>
+    <button type="button" data-act="text">Show as free text</button>
+    <button type="button" data-act="rank">Show as rank order (unsupported)</button>
+  </div>
+</form>
+
+<h2>During a poll</h2>
+<button type="button" data-do="lock">Lock</button>
+<button type="button" data-do="unlock">Unlock</button>
+<button type="button" data-do="clear">Clear responses</button>
+<button type="button" data-do="deactivate">Stop showing it</button>
+
+<h2>Make trouble</h2>
+<button type="button" data-do="reload">Reload participant pages</button>
+<button type="button" data-do="remount">Redraw the poll</button>
+<button type="button" data-do="drop-push">Drop the live connection</button>
+<button type="button" data-fault="failSubmits" data-value="1">Fail the next response</button>
+<button type="button" data-fault="submitDelayMs" data-value="3000">Slow responses (3 s)</button>
+<button type="button" data-fault="submitDelayMs" data-value="0">Normal speed</button>
+
+<h2>Status</h2>
+<pre id="status">loading…</pre>
+
+<script>
+  const post = (action, body) =>
+    fetch('/control/' + action, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) })
+      .then((r) => r.json())
+      .then(show);
+  const show = (data) => {
+    document.getElementById('status').textContent = JSON.stringify(data, null, 2);
+  };
+  const refresh = () => fetch('/control/status').then((r) => r.json()).then(show).catch(() => undefined);
+  document.querySelectorAll('[data-act]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const title = document.getElementById('title').value;
+      const options = document.getElementById('options').value.split('\n').map((s) => s.trim()).filter(Boolean);
+      if (button.dataset.act === 'mc') post('activate', { title, options });
+      else if (button.dataset.act === 'rank') post('activate', { title, options, type: 'ranking_poll' });
+      else post('activate', { title });
+    });
+  });
+  document.querySelectorAll('[data-do]').forEach((button) => {
+    button.addEventListener('click', () => post(button.dataset.do));
+  });
+  document.querySelectorAll('[data-fault]').forEach((button) => {
+    button.addEventListener('click', () => post('fault', { name: button.dataset.fault, value: Number(button.dataset.value) }));
+  });
+  refresh();
+  setInterval(refresh, 2000);
+</script>
+</body>
+</html>

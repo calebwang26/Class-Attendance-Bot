@@ -1,0 +1,28 @@
+{
+  "name": "pollbot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local tool that watches a live polling page and responds to each poll once",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/index.ts",
+    "login": "node src/index.ts --login",
+    "dry-run": "node src/index.ts --dry-run",
+    "mock": "node mock-site/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "node --test --test-timeout=30000 \"tests/unit/**/*.test.ts\"",
+    "test:integration": "node --test --test-timeout=180000 --test-concurrency=4 \"tests/integration/**/*.test.ts\"",
+    "test:soak": "node --test --test-timeout=7200000 \"tests/soak/**/*.test.ts\"",
+    "test": "npm run typecheck && npm run test:unit && npm run test:integration"
+  },
+  "dependencies": {
+    "playwright": "^1.63.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "typescript": "^7.0.2"
+  }
+}

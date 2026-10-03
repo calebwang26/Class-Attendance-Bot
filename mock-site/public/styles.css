@@ -1,0 +1,274 @@
+:root {
+  --bg: #0b0b0c;
+  --panel: #17181a;
+  --text: #f2f2f2;
+  --muted: #a9adb3;
+  --accent: #1d7fd6;
+  --line: #2c2e33;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+body[data-participate] {
+  display: grid;
+  grid-template-columns: 78px 1fr;
+}
+
+#skipnav {
+  position: absolute;
+  left: -9999px;
+}
+
+#navigation {
+  background: var(--panel);
+  padding: 12px 0;
+}
+
+.nav-items {
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-items a {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  text-decoration: none;
+  padding: 12px 4px;
+}
+
+#main-content {
+  overflow-y: auto;
+  padding: 0 32px 32px;
+  position: relative;
+}
+
+.hidden {
+  display: none !important;
+}
+
+[role='tablist'] {
+  display: flex;
+  gap: 4px;
+  padding-top: 8px;
+}
+
+[role='tab'] {
+  background: #d9dbdf;
+  border: 0;
+  border-radius: 6px 6px 0 0;
+  padding: 4px 16px;
+  min-width: 100px;
+  font-weight: 600;
+}
+
+[role='tab'][aria-selected='true'] {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.waiting {
+  display: flex;
+  gap: 32px;
+  padding: 16px 0;
+}
+
+.waiting h1 {
+  font-size: 20px;
+}
+
+/* Cookie notice: fixed to the top right, above the page, as on the real site. */
+.cookie-region {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 1060;
+  min-width: 20rem;
+  max-width: min(500px, 90%);
+}
+
+#cookie-consent-banner {
+  background: #fff;
+  color: #111;
+  padding: 16px;
+  border-left: 4px solid var(--accent);
+  border-radius: 2px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 40%);
+}
+
+.cookie-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.cookie-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+/* Fault switch: an invisible layer that swallows every mouse click. */
+#click-eater {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+}
+
+.modal .scrim {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  opacity: 0.6;
+  z-index: 10;
+}
+
+.modal .sheet {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 32rem;
+  max-width: 100%;
+  background: var(--panel);
+  padding: 24px;
+  z-index: 11;
+  display: block;
+}
+
+legacy-response-view,
+turbo-frame {
+  display: block;
+}
+
+.component-response-header__title {
+  font-size: 22px;
+  margin: 16px 0 8px;
+}
+
+.component-response-header__look-at-screen {
+  display: none;
+}
+
+.component-response-header__status {
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.component-response-multiple-choice__option {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.component-response-multiple-choice__option__vote {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  padding: 14px 16px;
+  font-size: 16px;
+  color: #fff;
+  background: var(--accent);
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.component-response-multiple-choice__option__vote:disabled {
+  background: #4a4d55;
+  color: #c9ccd1;
+  cursor: default;
+}
+
+.component-response-multiple-choice__option--vote .component-response-multiple-choice__option__vote {
+  outline: 2px solid #fff;
+}
+
+.component-response-open-ended__input textarea,
+body.plain textarea {
+  width: 100%;
+  min-height: 90px;
+  font: inherit;
+  padding: 8px;
+}
+
+.component-response-open-ended__result {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.component-response-rank-order__option {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+
+.pe-notification {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  background: #fff;
+  color: #111;
+  padding: 12px 16px;
+  border-left: 4px solid #c62828;
+  max-width: 360px;
+}
+
+/* Plain pages: generic poll, sign-in, presenter controls. */
+body.plain {
+  background: #fff;
+  color: #111;
+  padding: 24px;
+  max-width: 760px;
+  margin: 0 auto;
+  height: auto;
+}
+
+body.plain fieldset {
+  border: 1px solid #bbb;
+  padding: 16px;
+}
+
+body.plain label.choice {
+  display: block;
+  padding: 6px 0;
+}
+
+body.plain button {
+  margin: 8px 8px 0 0;
+  padding: 6px 12px;
+}
+
+body.plain input[type='text'],
+body.plain input[type='email'],
+body.plain input[type='password'] {
+  display: block;
+  margin: 4px 0 12px;
+  padding: 6px;
+  width: 280px;
+}
+
+body.plain pre {
+  background: #f3f3f3;
+  padding: 12px;
+  overflow: auto;
+  font-size: 12px;
+}
