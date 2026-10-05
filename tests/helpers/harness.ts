@@ -6,6 +6,7 @@ import { AnsweredStore } from '../../src/dedupe/store.ts';
 import { Logger, type LogEvent } from '../../src/logger/logger.ts';
 import { Orchestrator, type Summary } from '../../src/orchestrator/orchestrator.ts';
 import { MockSite, startMockSite } from '../../mock-site/server.ts';
+import type { LectureHours } from '../../src/schedule/lectureHours.ts';
 
 /** Settings that make the bot quick enough for tests while keeping every mechanism switched on. */
 export const FAST: PartialConfig = {
@@ -75,7 +76,7 @@ export async function waitUntil(check: () => boolean, what: string, timeoutMs = 
 export async function startBot(
   site: MockSite,
   url: string,
-  options: { overrides?: PartialConfig; dir?: string; rng?: () => number } = {},
+  options: { overrides?: PartialConfig; dir?: string; rng?: () => number; lectureHours?: LectureHours; clock?: () => Date } = {},
 ): Promise<Harness> {
   const dir = options.dir ?? makeScratchDir();
   const config = buildConfig(FAST, options.overrides, {
@@ -101,6 +102,8 @@ export async function startBot(
     screenshotDir: path.join(dir, 'screenshots'),
     notify: (title, message) => notifications.push({ title, message }),
     ...(options.rng ? { rng: options.rng } : {}),
+    ...(options.lectureHours ? { lectureHours: options.lectureHours } : {}),
+    ...(options.clock ? { clock: options.clock } : {}),
   });
 
   let summary: Summary | null = null;
@@ -174,6 +177,10 @@ export interface WithBotOptions {
   /** Runs before the bot starts, e.g. to activate a poll or set a fault. */
   before?: (site: MockSite) => void | Promise<void>;
   rng?: () => number;
+  /** Answer only during these lecture times. */
+  lectureHours?: LectureHours;
+  /** The time of day the lecture-time rule sees. */
+  clock?: () => Date;
   dir?: string;
   /** Keep the scratch directory afterwards (a later bot in the same test reuses it). */
   keepDir?: boolean;
@@ -189,6 +196,8 @@ export async function withBot(options: WithBotOptions, body: (h: Harness, site: 
       ...(options.overrides ? { overrides: options.overrides } : {}),
       ...(options.dir ? { dir: options.dir } : {}),
       ...(options.rng ? { rng: options.rng } : {}),
+      ...(options.lectureHours ? { lectureHours: options.lectureHours } : {}),
+      ...(options.clock ? { clock: options.clock } : {}),
     });
     await body(harness, site);
   } finally {

@@ -2,7 +2,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { BrowserLaunchError, BrowserMonitor } from './browser/monitor.ts';
 import { HELP, parseCliArgs, UsageError } from './cli/args.ts';
-import { askForUrl, readLastUrl, writeLastUrl } from './cli/prompt.ts';
+import {
+  askForLectureHours,
+  askForUrl,
+  describeChoice,
+  parseChoice,
+  readLastUrl,
+  readRecentHours,
+  rememberHours,
+  writeLastUrl,
+  type LectureChoice,
+} from './cli/prompt.ts';
 import {
   buildConfig,
   ConfigError,
@@ -15,6 +25,7 @@ import {
 import { AnsweredStore } from './dedupe/store.ts';
 import { Logger, makeSessionId, pruneOldFiles } from './logger/logger.ts';
 import { Orchestrator, screenshotDirFor, type Summary } from './orchestrator/orchestrator.ts';
+import { describeMoment, isLectureTime, nextLectureStart } from './schedule/lectureHours.ts';
 import { acquireInstanceLock } from './system/instanceLock.ts';
 import { keepAwake } from './system/keepAwake.ts';
 import { notifyUser } from './system/notify.ts';
@@ -52,6 +63,7 @@ function printSummary(summary: Summary, logFile: string): void {
   out(`  Could not answer:  ${summary.failed}`);
   out(`  Unsupported type:  ${summary.unsupported}`);
   out(`  Left alone:        ${summary.skipped}`);
+  out(`  Outside lecture:   ${summary.outsideLecture}`);
   out(`  Page recoveries:   ${summary.recoveries}`);
   const relative = path.relative(process.cwd(), logFile);
   out(`  Log file:          ${relative && !relative.startsWith('..') ? relative : logFile}`);
@@ -90,7 +102,19 @@ async function runLogin(config: Config, url: string): Promise<number> {
   return 0;
 }
 
-async function runBot(config: Config, url: string): Promise<number> {
+/** The lines describing the lecture times at start-up. */
+function describeLecture(choice: LectureChoice, config: Config, now: Date): string[] {
+  if (choice.kind === 'any') return ['  Lecture:  any time — every poll is answered'];
+  const margin = config.lectureMarginMinutes;
+  const lines = [`  Lecture:  ${describeChoice(choice)}${margin > 0 ? ` (answers from ${margin} min before to ${margin} min after)` : ''}`];
+  if (!isLectureTime(choice.hours, now, margin)) {
+    const next = nextLectureStart(choice.hours, now, margin);
+    lines.push(`  Now:      not lecture time — watching only${next ? `; answering starts ${describeMoment(next, now)}` : ''}`);
+  }
+  return lines;
+}
+
+async function runBot(config: Config, url: string, lecture: LectureChoice): Promise<number> {
   const logDir = resolvePath(config.logging.dir);
   const screenshotDir = screenshotDirFor(logDir);
   const logger = new Logger({
@@ -125,11 +149,13 @@ async function runBot(config: Config, url: string): Promise<number> {
     profileDir: resolvePath(config.browser.profileDir),
     screenshotDir,
     notify: (title, message) => notifyUser(title, message, config.notify),
+    lectureHours: lecture.kind === 'hours' ? lecture.hours : null,
   });
 
   out('Poll bot');
   out(`  Link:     ${url}`);
   out(`  Answers:  ${describeAnswers(config)}${config.dryRun ? '   (DRY RUN: nothing will be sent)' : ''}`);
+  for (const line of describeLecture(lecture, config, new Date())) out(line);
   out(`  Runs:     ${config.stopAfterMinutes === null ? 'until you stop it' : `for ${config.stopAfterMinutes} minutes, or until you stop it`}`);
   out("  Stop:     press Ctrl+C here, or close the bot's browser window");
   if (config.keepAwake && process.platform === 'darwin') {
@@ -137,10 +163,16 @@ async function runBot(config: Config, url: string): Promise<number> {
   }
   out();
 
-  let signals = 0;
+  // A second Ctrl+C forces an immediate exit. One press can arrive twice within a
+  // moment (under `npm start`, from the terminal and again from npm passing it on),
+  // so only a signal at least a second after the first counts as a second press.
+  let firstSignalAt: number | null = null;
   const onSignal = (name: string): void => {
-    signals += 1;
-    if (signals > 1) process.exit(130);
+    if (firstSignalAt !== null) {
+      if (Date.now() - firstSignalAt >= 1000) process.exit(130);
+      return;
+    }
+    firstSignalAt = Date.now();
     orchestrator.stop(`stopped from the terminal (${name})`);
   };
   const onInt = (): void => onSignal('Ctrl+C');
@@ -228,13 +260,38 @@ export async function main(argv: readonly string[]): Promise<number> {
   }
   writeLastUrl(stateFile, url);
 
+  // When the bot may answer. Asked every time (unless given as a flag), because
+  // one link can serve several lectures; there is no silent default.
+  let lecture: LectureChoice | null = null;
+  if (args.mode !== 'login') {
+    if (args.hours !== null) {
+      const parsed = args.hours === 'any' ? { ok: true as const, choice: { kind: 'any' as const } } : parseChoice(args.hours);
+      if (!parsed.ok) {
+        out(`--hours: ${parsed.error}.`);
+        out('Write it like:  --hours "Mon Wed Fri 8:00-9:30"   (or --any-time for no limit)');
+        return 2;
+      }
+      lecture = parsed.choice;
+    } else {
+      if (!process.stdin.isTTY) {
+        out('The bot needs your lecture times. Run it in a terminal to be asked, or add');
+        out('  --hours "Mon Wed Fri 8:00-9:30"   or   --any-time');
+        return 2;
+      }
+      lecture = await askForLectureHours(readRecentHours(stateFile), config.lectureMarginMinutes);
+      if (lecture === null) return 0;
+      out();
+    }
+    rememberHours(stateFile, lecture);
+  }
+
   const lock = acquireInstanceLock(resolvePath(config.browser.profileDir));
   if (!lock.ok) {
     out(lock.reason);
     return 1;
   }
   try {
-    return args.mode === 'login' ? await runLogin(config, url) : await runBot(config, url);
+    return args.mode === 'login' || lecture === null ? await runLogin(config, url) : await runBot(config, url, lecture);
   } catch (error) {
     if (error instanceof BrowserLaunchError) {
       out(error.message);

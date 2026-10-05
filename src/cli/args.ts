@@ -6,6 +6,8 @@ export interface CliArgs {
   /** Link given on the command line, not yet normalised. */
   url: string | null;
   configPath: string | null;
+  /** Lecture times given with --hours (not yet checked), or 'any' for --any-time, or null to ask. */
+  hours: string | 'any' | null;
   /** Settings given as flags; they override the config file. */
   overrides: PartialConfig;
 }
@@ -25,6 +27,9 @@ Usage
   npm run login -- <link>        open the bot's browser so you can sign in, then close it
   npm run dry-run -- <link>      watch and log polls without answering
 
+When it starts, the bot asks when your lecture is, and only answers polls then
+(5 minutes either side). Press Enter to reuse your last lecture times.
+
 Stop it with Ctrl+C in this window, or by closing the bot's browser window.
 
 Options (after "--")
@@ -32,6 +37,8 @@ Options (after "--")
   --choice <how>            multiple choice: random (default), first, last, skip
   --free-text <how>         free text: fixed_text (default), echo_question, skip
   --text <string>           the text sent to free-text polls (default: value)
+  --hours "<times>"         lecture times, instead of being asked (e.g. "Mon Wed Fri 8:00-9:30")
+  --any-time                answer polls at any time, instead of being asked
   --stop-after <minutes>    stop by itself after this long (default: never)
   --chrome                  use installed Google Chrome instead of the bundled Chromium
   --headless                run the browser without a window
@@ -56,6 +63,8 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
         'free-text': { type: 'string' },
         text: { type: 'string' },
         'stop-after': { type: 'string' },
+        hours: { type: 'string' },
+        'any-time': { type: 'boolean' },
         chrome: { type: 'boolean' },
         headless: { type: 'boolean' },
         'no-keep-awake': { type: 'boolean' },
@@ -72,6 +81,11 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
   if (positionals.length > 1) {
     throw new UsageError(`Expected one link, got ${positionals.length}: ${positionals.join(' ')}`);
   }
+
+  if (values.hours !== undefined && values['any-time']) {
+    throw new UsageError('Give either --hours or --any-time, not both');
+  }
+  if (values.hours !== undefined && values.hours.trim() === '') throw new UsageError('--hours needs your lecture times, e.g. --hours "Mon Wed Fri 8:00-9:30"');
 
   const overrides: PartialConfig = {};
   const response: NonNullable<PartialConfig['response']> = {};
@@ -101,6 +115,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
     mode,
     url: positionals[0] ?? null,
     configPath: values.config ?? null,
+    hours: values['any-time'] ? 'any' : (values.hours ?? null),
     overrides,
   };
 }

@@ -2,8 +2,15 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { HELP, parseCliArgs, UsageError } from '../../src/cli/args.ts';
 
-test('no arguments means: run, and ask for the link', () => {
-  assert.deepEqual(parseCliArgs([]), { mode: 'run', url: null, configPath: null, overrides: {} });
+test('no arguments means: run, and ask for the link and the lecture times', () => {
+  assert.deepEqual(parseCliArgs([]), { mode: 'run', url: null, configPath: null, hours: null, overrides: {} });
+});
+
+test('--hours and --any-time answer the lecture-times question; both at once is an error', () => {
+  assert.equal(parseCliArgs(['x', '--hours', 'Mon 8-9']).hours, 'Mon 8-9');
+  assert.equal(parseCliArgs(['x', '--any-time']).hours, 'any');
+  assert.throws(() => parseCliArgs(['x', '--hours', 'Mon 8-9', '--any-time']), /either --hours or --any-time/);
+  assert.throws(() => parseCliArgs(['x', '--hours', '  ']), /--hours needs your lecture times/);
 });
 
 test('a link can be given as the only positional argument', () => {

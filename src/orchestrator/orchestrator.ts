@@ -8,6 +8,7 @@ import { locationKey, recognize, sameLocation, sameOrigin, samePresenter, type R
 import { chooseResponse } from '../selector/select.ts';
 import { Submitter } from '../submitter/submit.ts';
 import { normalizeText } from '../recognizer/fingerprint.ts';
+import { describeLectureHours, describeMoment, isLectureTime, nextLectureStart, type LectureHours } from '../schedule/lectureHours.ts';
 import type { Confirmation, PageSnapshot, PlannedResponse, Poll, PollStatus, Recognition, SnapshotPoll } from '../types.ts';
 import { AbortError, backoffMs, errorMessage, randomInt } from '../util/time.ts';
 
@@ -31,6 +32,8 @@ export interface Summary {
   unsupported: number;
   /** Polls left alone by choice (strategy "skip", dry run, or judged a duplicate). */
   skipped: number;
+  /** Polls not answered because they were outside the lecture times. */
+  outsideLecture: number;
   /** Times it had to reopen or reload the page to recover. */
   recoveries: number;
 }
@@ -47,6 +50,10 @@ export interface OrchestratorDeps {
   notify: (title: string, message: string) => void;
   /** Random source in [0, 1). Injected so tests are repeatable. */
   rng?: () => number;
+  /** Answer only during these lecture times (widened by `lectureMarginMinutes`). Omitted or null: any time. */
+  lectureHours?: LectureHours | null;
+  /** The time of day for the lecture-time rule. Injected so tests can move it. */
+  clock?: () => Date;
 }
 
 /** Longest the bot holds a response back for the page to finish loading earlier responses. */
@@ -75,6 +82,8 @@ interface Instance {
   secondChanceUsed: boolean;
   /** This appearance is currently counted as "could not answer" in the summary. */
   countedFailed: boolean;
+  /** It first appeared during lecture time (always true without lecture times). */
+  firstSeenInLecture: boolean;
   lastStatus: PollStatus | null;
   /** Things already reported for this appearance, so each is said once. */
   reported: Set<string>;
@@ -210,6 +219,8 @@ export class Orchestrator {
   private bannerHintGiven = false;
   /** Last page state written to the log, so each change is recorded once. */
   private lastStateKey = '';
+  /** Whether it was lecture time at the last check, to announce changes. null before the first. */
+  private lastInLecture: boolean | null = null;
 
   private readonly counters = {
     detected: 0,
@@ -218,6 +229,7 @@ export class Orchestrator {
     failed: 0,
     unsupported: 0,
     skipped: 0,
+    outsideLecture: 0,
     recoveries: 0,
   };
 
@@ -266,6 +278,8 @@ export class Orchestrator {
       multipleChoice: this.config.response.multipleChoice,
       freeText: this.config.response.freeText,
       stopAfterMinutes: this.config.stopAfterMinutes,
+      lectureHours: this.deps.lectureHours ? describeLectureHours(this.deps.lectureHours) : 'any time',
+      lectureMarginMinutes: this.config.lectureMarginMinutes,
     });
 
     let stopTimer: NodeJS.Timeout | null = null;
@@ -465,6 +479,7 @@ export class Orchestrator {
     }
     this.snapshotFailures = 0;
 
+    this.noteLectureTime();
     const snapshot = result.snapshot;
     const recognition = recognize(snapshot, this.recognizeOptions);
     const now = Date.now();
@@ -700,6 +715,7 @@ export class Orchestrator {
         gaveUpAt: null,
         secondChanceUsed: false,
         countedFailed: false,
+        firstSeenInLecture: this.inLecture(),
         lastStatus: null,
         reported: new Set(),
       };
@@ -820,6 +836,14 @@ export class Orchestrator {
 
     if (decision.action === 'skip') {
       this.reportSkip(instance, poll, decision.reason, recognition.evidence, doubt);
+      return;
+    }
+
+    // Only during the person's own lecture: the same link may serve another section's.
+    // A poll that first appeared outside lecture time is never answered, even if it is
+    // still showing when lecture time begins (it belongs to an earlier lecture).
+    if (!instance.firstSeenInLecture || !this.inLecture()) {
+      this.reportOutsideLecture(instance, poll);
       return;
     }
 
@@ -957,6 +981,57 @@ export class Orchestrator {
     if (snapshot.resultsLoaded) return { state: 'confirmed_open' };
     const until = snapshot.docStartedAt + RESULTS_WAIT_MS;
     return now < until ? { state: 'pending', until } : { state: 'unverifiable' };
+  }
+
+  /** Whether polls may be answered now. Always true without lecture times. */
+  private inLecture(): boolean {
+    const hours = this.deps.lectureHours;
+    if (!hours) return true;
+    return isLectureTime(hours, (this.deps.clock ?? (() => new Date()))(), this.config.lectureMarginMinutes);
+  }
+
+  /** When lecture time next begins, for messages ("Wed 7:55am"), or null. */
+  private nextLecture(): string | null {
+    const hours = this.deps.lectureHours;
+    if (!hours) return null;
+    const now = (this.deps.clock ?? (() => new Date()))();
+    const next = nextLectureStart(hours, now, this.config.lectureMarginMinutes);
+    return next ? describeMoment(next, now) : null;
+  }
+
+  /**
+   * Says when lecture time begins or ends. The state at start-up is only logged:
+   * the start-up lines already said it.
+   */
+  private noteLectureTime(): void {
+    if (!this.deps.lectureHours) return;
+    const inLecture = this.inLecture();
+    if (inLecture === this.lastInLecture) return;
+    const first = this.lastInLecture === null;
+    this.lastInLecture = inLecture;
+    const next = inLecture ? null : this.nextLecture();
+    const when = next ? ` Answering starts ${next}.` : '';
+    if (first) {
+      this.logger.debug(inLecture ? 'lecture.started' : 'lecture.ended', {
+        message: inLecture ? 'It is lecture time: answering polls.' : `It is not lecture time: watching only, no answers.${when}`,
+      });
+    } else if (inLecture) {
+      this.logger.info('lecture.started', { message: 'Lecture time has started: answering polls.' });
+    } else {
+      this.logger.info('lecture.ended', { message: `Lecture time is over: watching only, no answers.${when}` });
+    }
+  }
+
+  private reportOutsideLecture(instance: Instance, poll: Poll): void {
+    if (instance.reported.has('outside_lecture')) return;
+    instance.reported.add('outside_lecture');
+    this.counters.outsideLecture += 1;
+    const why = instance.firstSeenInLecture
+      ? 'your lecture time ended before it could be answered'
+      : 'it appeared outside your lecture times';
+    const message = `Not answering ${quote(poll.question || 'this poll', 60)}: ${why}. If it is for your lecture, answer it by hand in the bot's window.`;
+    this.logger.info('poll.outside_lecture', { fingerprint: poll.fingerprint, firstSeenInLecture: instance.firstSeenInLecture, message });
+    this.deps.notify('Poll bot: not lecture time', message);
   }
 
   private reportSkip(instance: Instance, poll: Poll, reason: SkipReason, evidence: string, doubt: Doubt | null): void {

@@ -8,7 +8,7 @@
 | Multiple choice | A random option. |
 | Free text | Always the literal text `value`. |
 | Which poll page? | Any link the user gives at start: prompted for, or passed on the command line. The last one is remembered. |
-| Scheduling | None. The user starts the bot and it runs until they stop it. An optional `--stop-after` exists but is off by default. |
+| Scheduling | None. The user starts the bot and it runs until they stop it. An optional `--stop-after` exists but is off by default. Polls are answered only during the lecture times asked for at start-up (added after the first live class, where one link served two sections). |
 | Interface | Terminal plus the browser window. No separate app. A double-click launcher is provided for macOS. |
 | Sign-in | Poll Everywhere account (school email), signed in once in the bot's own browser. |
 | Poll types | About 95% multiple choice, the rest free text. |

@@ -99,6 +99,49 @@ Some presenters' links now open "Poll Everywhere 2.0" at `pe.app/<name>`
 instead. Give the pollev.com link anyway; the bot follows the redirect and
 handles both versions.
 
+The link can be different every week or every day; just paste that day's.
+
+### Lecture times
+
+Next, the bot asks when your lecture is. **It only answers polls during your
+lecture** (and 5 minutes either side), because one link is often shared by
+several lectures of the same course, for example an 8am and a 10am section.
+Outside your lecture it keeps watching but never answers.
+
+```
+When is your lecture? The bot only answers polls during it (and 5 minutes either side).
+  For example:  Mon Wed Fri 8:00-9:30   or   TTh 2-3:30pm   or   any  (no limit)
+  Saved:
+    1) Mon Wed Fri 8:00am–9:30am
+    2) Tue Thu 2:00pm–3:30pm
+  Press Enter for 1, type a number, or type new times.
+Lecture times:
+```
+
+- **It asks every time.** Press Enter to use your most recent times, or type a
+  number to pick another saved one (useful with more than one class). The bot
+  keeps your last 5, whatever link they were used with.
+- **The first time, you must type them.** There is no default.
+- **Ways to write them:** `Mon Wed Fri 8:00-9:30`, `MWF 8-9:30am`,
+  `Tue/Thu 2:00pm-3:30pm`, `TTh 2-3:30pm`, `weekdays 10-11`,
+  `Mon 8:00-9:30, Thu 14:00-15:20` (different times on different days).
+  Times without days, like `8:00-9:30`, mean every day.
+- **Times from 1:00 to 7:59 need am or pm** (or the 24-hour clock, like
+  14:00), because `2-3:30` could be either. The bot never guesses: if it does
+  not understand something it says what and asks again.
+- **`any`** turns the limit off: every poll is answered, whenever it appears.
+- Before it starts, the bot repeats the times back, and says if it is not
+  lecture time yet and when answering will start.
+
+A poll that first appears outside your lecture is never answered, even if it
+is still showing when your lecture begins (it belongs to another lecture). If
+a poll is for your lecture after all (the professor started very early, say),
+answer it by hand in the bot's window. The bot tells you each time it leaves
+a poll alone for this reason.
+
+To skip the question, give the times as a flag:
+`npm start -- pollev.com/x --hours "Mon Wed Fri 8:00-9:30"`, or `--any-time`.
+
 A browser window opens on the poll page and the terminal shows what the bot
 is doing:
 
@@ -114,7 +157,8 @@ is doing:
 - close the bot's browser window.
 
 When it stops it prints a summary: polls seen, answered, already answered,
-not answered, and the log file it wrote.
+not answered, left alone because they were outside your lecture, and the log
+file it wrote.
 
 Keep the laptop open and awake while the bot runs. On a Mac the bot stops the
 computer from going to sleep by itself, but closing the lid still puts it to
@@ -134,6 +178,8 @@ It shows a desktop notification and a message in the terminal when:
   image, Q&A, or attendance check-in. Answer that one yourself in the bot's
   window.
 - **A poll could not be answered** after several tries.
+- **A poll appeared outside your lecture times** and was left alone. Answer it
+  by hand if it is for your lecture after all.
 - **The page shows something it does not recognise.** It first reloads the
   poll page once, then tells you. A screenshot is saved next to the log.
 
@@ -150,6 +196,8 @@ Flags go after `--`, for example `npm start -- pollev.com/x --dry-run`.
 | `--choice <how>` | Multiple choice: `random` (default), `first`, `last`, `skip`. |
 | `--free-text <how>` | Free text: `fixed_text` (default), `echo_question`, `skip`. |
 | `--text <string>` | What to type for free text. Default: `value`. |
+| `--hours "<times>"` | Your lecture times, instead of being asked. |
+| `--any-time` | Answer polls at any time, instead of being asked. |
 | `--stop-after <minutes>` | Stop by itself after this long. Default: never. |
 | `--chrome` | Use your installed Google Chrome instead of the bundled browser. |
 | `--headless` | Run the browser without a window. |
@@ -172,7 +220,7 @@ poll. So, the first time you use it on a class with that page:
    the terminal:
 
    ```bash
-   npm run dry-run -- pollev.com/yourpresenter
+   npm run dry-run -- pollev.com/presenter
    ```
 
    Each poll should produce a `New poll:` line and a

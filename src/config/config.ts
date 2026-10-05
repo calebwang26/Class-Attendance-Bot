@@ -12,6 +12,8 @@ export interface Config {
   dryRun: boolean;
   /** Optional automatic stop. null means run until the user stops it. */
   stopAfterMinutes: number | null;
+  /** Lecture times are widened by this many minutes at each end. */
+  lectureMarginMinutes: number;
   /** Keep the computer from idle-sleeping while the bot runs (macOS only). */
   keepAwake: boolean;
   /**
@@ -95,6 +97,7 @@ export const DEFAULT_CONFIG: Config = {
   url: null,
   dryRun: false,
   stopAfterMinutes: null,
+  lectureMarginMinutes: 5,
   keepAwake: true,
   requireSignIn: true,
   response: {
@@ -155,6 +158,7 @@ const CONFIG_SPEC: Spec = {
     url: { type: 'string', nullable: true, nonEmpty: true },
     dryRun: { type: 'boolean' },
     stopAfterMinutes: { type: 'number', nullable: true, min: 0.01, max: 7 * 24 * 60 },
+    lectureMarginMinutes: { type: 'number', integer: true, min: 0, max: 60 },
     keepAwake: { type: 'boolean' },
     requireSignIn: { type: 'boolean' },
     response: {

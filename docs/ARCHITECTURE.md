@@ -29,7 +29,8 @@ the page's own controls and waits for the page to confirm.
 | Module | Responsibility |
 | --- | --- |
 | `src/index.ts` | Command line: reads flags and settings, asks for the link, takes the single-copy lock, starts the bot or the sign-in window, prints the summary, handles Ctrl+C. |
-| `src/cli/` | Flag parsing (`args.ts`) and the link prompt plus last-link memory (`prompt.ts`). |
+| `src/cli/` | Flag parsing (`args.ts`); the link and lecture-times questions, with the last link and recent lecture times remembered (`prompt.ts`). |
+| `src/schedule/lectureHours.ts` | Reading lecture times as people type them, and whether a moment is lecture time (with the margin). Pure. |
 | `src/config/config.ts` | Settings: defaults, validation (unknown keys and bad values are errors), link normalisation. |
 | `src/browser/pageAgent.ts` | Runs inside the page. Watches for DOM changes and the page's own "saved" and "error" events, and builds a `PageSnapshot`: whether a poll is showing, its question, options, text box, status line, the participant's own responses, sign-in state, dialogs, connection state. Three readers: the older Poll Everywhere page, Poll Everywhere 2.0 (pe.app), and plain pages. Changes nothing on the page. |
 | `src/browser/monitor.ts` | Owns the browser: launches the persistent profile, injects the agent, relays change notices, takes snapshots, and hands out elements by reference. It watches the page's requests: those that load earlier responses, and those that send something, with how they ended (method, address, status only). It also replaces crashed tabs and reports closed windows. |

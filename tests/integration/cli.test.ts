@@ -123,7 +123,7 @@ test('a full run from the command line: answers the poll, stops at the time limi
   const dir = makeScratchDir();
   try {
     const id = site.activate({ title: 'From the command line', options: PLANETS });
-    const { code, out } = await run([site.participantUrl(), '--config', writeSettings(dir), '--stop-after', '0.06'], { timeoutMs: 90000 });
+    const { code, out } = await run([site.participantUrl(), '--any-time', '--config', writeSettings(dir), '--stop-after', '0.06'], { timeoutMs: 90000 });
     assert.equal(code, 0, out);
     assert.match(out, /Poll bot/);
     assert.match(out, new RegExp(`Link:\\s+${site.participantUrl().replace(/[/.]/g, '\\$&')}`));
@@ -154,7 +154,7 @@ test('Ctrl+C stops the bot cleanly with a summary', async () => {
   const dir = makeScratchDir();
   try {
     let sent = false;
-    const { code, out } = await run([site.participantUrl(), '--config', writeSettings(dir)], {
+    const { code, out } = await run([site.participantUrl(), '--any-time', '--config', writeSettings(dir)], {
       timeoutMs: 90000,
       onOutput: (soFar, kill) => {
         if (!sent && /no poll is showing/.test(soFar)) {
@@ -180,7 +180,7 @@ test('--dry-run from the command line sends nothing and says so', async () => {
   const dir = makeScratchDir();
   try {
     site.activate({ title: 'Only looking', options: PLANETS });
-    const { code, out } = await run([site.participantUrl(), '--dry-run', '--config', writeSettings(dir), '--stop-after', '0.05'], { timeoutMs: 90000 });
+    const { code, out } = await run([site.participantUrl(), '--dry-run', '--any-time', '--config', writeSettings(dir), '--stop-after', '0.05'], { timeoutMs: 90000 });
     assert.equal(code, 0, out);
     assert.match(out, /DRY RUN/);
     assert.match(out, /Dry run: would answer "Mercury"/);
@@ -199,14 +199,14 @@ test('a second copy on the same browser profile is refused at once with a clear 
     const settings = writeSettings(dir);
     let second: Run | null = null;
     let started = false;
-    const first = run([site.participantUrl(), '--config', settings], {
+    const first = run([site.participantUrl(), '--any-time', '--config', settings], {
       timeoutMs: 90000,
       onOutput: (soFar, kill) => {
         killFirst = kill;
         if (!started && /no poll is showing/.test(soFar)) {
           started = true;
           const t = Date.now();
-          void run([site.participantUrl(), '--config', settings], { timeoutMs: 60000 }).then((r) => {
+          void run([site.participantUrl(), '--any-time', '--config', settings], { timeoutMs: 60000 }).then((r) => {
             second = { ...r, out: `${r.out}\n(took ${Date.now() - t} ms)` };
           });
         }
@@ -251,6 +251,90 @@ test('--login opens the browser on the link, explains what to do, and ends clean
     assert.ok(site.pageLoads >= 1, 'the link was opened');
     assert.equal(site.attempts.length, 0, 'nothing was answered in login mode');
     assert.ok(!fs.existsSync(path.join(dir, 'profile.lock')), 'the lock is released');
+  } finally {
+    await site.close();
+    cleanup(dir);
+  }
+});
+
+test('without a terminal to ask at, the lecture times must be given; a bad --hours is explained', async () => {
+  const dir = makeScratchDir();
+  try {
+    const missing = await run(['pollev.com/x', '--config', writeSettings(dir)]);
+    assert.equal(missing.code, 2);
+    assert.match(missing.out, /needs your lecture times/);
+    assert.match(missing.out, /--hours "Mon Wed Fri 8:00-9:30"/);
+    const bad = await run(['pollev.com/x', '--hours', 'Mon Wed', '--config', writeSettings(dir)]);
+    assert.equal(bad.code, 2);
+    assert.match(bad.out, /--hours: No time range found/);
+  } finally {
+    cleanup(dir);
+  }
+});
+
+/** Lecture times (every day) that end `endsInMinutes` from now and last 30 minutes. */
+function hoursAround(endsInMinutes: number): string {
+  const at = (offset: number): string => {
+    const d = new Date(Date.now() + offset * 60000);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+  return `${at(endsInMinutes - 30)}-${at(endsInMinutes)}`;
+}
+
+test('--hours outside lecture time: the poll is watched, not answered, and the summary says so', async () => {
+  const site = await startMockSite();
+  const dir = makeScratchDir();
+  try {
+    site.activate({ title: 'Another section', options: PLANETS });
+    // Ended 20 minutes ago (beyond the 5-minute margin).
+    const { code, out } = await run([site.participantUrl(), '--hours', hoursAround(-20), '--config', writeSettings(dir), '--stop-after', '0.06'], { timeoutMs: 90000 });
+    assert.equal(code, 0, out);
+    assert.match(out, /Lecture: {2}Every day/);
+    assert.match(out, /not lecture time — watching only; answering starts (today|tomorrow) /);
+    assert.match(out, /Not answering "Another section": it appeared outside your lecture times/);
+    assert.match(out, /Outside lecture:\s+1/);
+    assert.equal(site.attempts.length, 0);
+    const state = JSON.parse(fs.readFileSync(path.join(dir, 'data', 'state.json'), 'utf8')) as { recentHours: unknown[] };
+    assert.equal(state.recentHours.length, 1, 'the lecture times are remembered for next time');
+  } finally {
+    await site.close();
+    cleanup(dir);
+  }
+});
+
+test('--hours during lecture time: the poll is answered', async () => {
+  const site = await startMockSite();
+  const dir = makeScratchDir();
+  try {
+    const id = site.activate({ title: 'My section', options: PLANETS });
+    const { code, out } = await run([site.participantUrl(), '--hours', hoursAround(20), '--config', writeSettings(dir), '--stop-after', '0.06'], { timeoutMs: 90000 });
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /not lecture time/);
+    assert.match(out, /Answered "Mercury" — confirmed/);
+    assert.equal(site.responsesFor(id).length, 1);
+  } finally {
+    await site.close();
+    cleanup(dir);
+  }
+});
+
+test('one Ctrl+C delivered twice at once (as under npm start) still stops cleanly with a summary', async () => {
+  const site = await startMockSite();
+  const dir = makeScratchDir();
+  try {
+    let sent = false;
+    const { code, out } = await run([site.participantUrl(), '--any-time', '--config', writeSettings(dir)], {
+      timeoutMs: 90000,
+      onOutput: (soFar, kill) => {
+        if (!sent && /no poll is showing/.test(soFar)) {
+          sent = true;
+          kill('SIGINT');
+          kill('SIGINT');
+        }
+      },
+    });
+    assert.equal(code, 0, out);
+    assert.match(out, /Session summary/);
   } finally {
     await site.close();
     cleanup(dir);

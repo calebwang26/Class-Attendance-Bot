@@ -283,6 +283,40 @@ Supporting mechanisms:
   waiting screen ends an appearance only when it lasts 3 s, so a waiting
   screen flashed while a page loads does not.
 
+### Lecture times
+
+One poll link is often shared by several lectures of a course (an 8am and a
+10am section, say), each shown its own copy of a poll. Those copies are
+different polls to Poll Everywhere, so the rules above would answer each.
+To answer only the person's own lecture, the bot asks for the lecture times
+at every start (`src/schedule/lectureHours.ts`, `src/cli/prompt.ts`).
+
+- **Asked every time, no silent default.** Enter reuses the most recent
+  times only when there are some; a number picks one of the last 5 (kept in
+  `.data/state.json`, independent of the link, which may change daily).
+  `any` turns the limit off. `--hours "<times>"` or `--any-time` answer the
+  question without asking; without a terminal, one of them is required.
+- **Reading the times.** Days (names, abbreviations, `MWF`/`TTh` letters,
+  ranges, `weekdays`), then a time range; several blocks separated by commas.
+  A block without days repeats the previous block's days; with none at all,
+  every day. am/pm on one side carries to the other unless that would put
+  the end first. Without am/pm, 0:00–0:59 and 8:00–23:59 are read as
+  written and 1:00–7:59 is refused as ambiguous (a leading zero, 07:00,
+  marks the 24-hour clock). An end earlier than the start on a 12-hour
+  clock face (`11-1:15`) is the afternoon; otherwise it runs past midnight.
+  Blocks over 12 hours are refused. Anything not understood is an error;
+  nothing is ignored or guessed.
+- **The rule.** Lecture time is each block widened by `lectureMarginMinutes`
+  (default 5) at both ends, in the computer's local time, with a block past
+  midnight belonging to the day it starts. A poll is answered only if its
+  appearance began in lecture time and it is still lecture time when an
+  attempt starts. So a poll left showing from another lecture is not
+  answered when the person's lecture begins, and no new attempt starts after
+  lecture time ends (one already under way finishes). Each poll left alone
+  this way is logged (`poll.outside_lecture`), notified once and counted in
+  the summary ("Outside lecture"). The start and end of lecture time are
+  announced while the bot runs.
+
 ## 6. Staying healthy
 
 | Problem | Detection | Response |
@@ -335,6 +369,7 @@ folder.
 | `url` | `null` | Poll link. Normally given at start instead. |
 | `dryRun` | `false` | Watch and log, never click or type. |
 | `stopAfterMinutes` | `null` | Optional automatic stop; `null` runs until stopped. |
+| `lectureMarginMinutes` | `5` | Minutes added before and after the lecture times entered at start-up. |
 | `keepAwake` | `true` | Keep the Mac from idle-sleeping while running. |
 | `requireSignIn` | `true` | On Poll Everywhere, do not answer while signed out. |
 | `response.multipleChoice` | `"random"` | `random`, `first`, `last` or `skip`. |

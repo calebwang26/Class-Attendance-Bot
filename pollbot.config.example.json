@@ -6,6 +6,7 @@
     "delayMs": { "min": 2000, "max": 8000 }
   },
   "stopAfterMinutes": null,
+  "lectureMarginMinutes": 5,
   "keepAwake": true,
   "requireSignIn": true,
   "notify": { "desktop": true, "sound": true },
