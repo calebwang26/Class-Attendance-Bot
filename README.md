@@ -133,11 +133,11 @@ Lecture times:
 - Before it starts, the bot repeats the times back, and says if it is not
   lecture time yet and when answering will start.
 
-A poll that first appears outside your lecture is never answered, even if it
-is still showing when your lecture begins (it belongs to another lecture). If
-a poll is for your lecture after all (the professor started very early, say),
-answer it by hand in the bot's window. The bot tells you each time it leaves
-a poll alone for this reason.
+During your lecture the bot answers any open poll, including one the
+professor opened before class: it holds that poll back until your lecture
+time starts, then answers it. The catch: if another section's poll is still
+open on the same link when your lecture starts, it gets answered too. The
+bot tells you each time it holds a poll back because it is not lecture time.
 
 To skip the question, give the times as a flag:
 `npm start -- pollev.com/x --hours "Mon Wed Fri 8:00-9:30"`, or `--any-time`.
@@ -178,8 +178,9 @@ It shows a desktop notification and a message in the terminal when:
   image, Q&A, or attendance check-in. Answer that one yourself in the bot's
   window.
 - **A poll could not be answered** after several tries.
-- **A poll appeared outside your lecture times** and was left alone. Answer it
-  by hand if it is for your lecture after all.
+- **A poll is open outside your lecture times** and is being held back. It is
+  answered if still open when your lecture starts; answer it by hand if you
+  want it answered sooner.
 - **The page shows something it does not recognise.** It first reloads the
   poll page once, then tells you. A screenshot is saved next to the log.
 
@@ -201,6 +202,7 @@ Flags go after `--`, for example `npm start -- pollev.com/x --dry-run`.
 | `--stop-after <minutes>` | Stop by itself after this long. Default: never. |
 | `--chrome` | Use your installed Google Chrome instead of the bundled browser. |
 | `--headless` | Run the browser without a window. |
+| `--share-location` | Let pollev.com and pe.app read your computer's real location, for location check-ins. Off by default; never a made-up location. |
 | `--allow-guest` | Answer even when not signed in. Responses will be anonymous. |
 | `--no-keep-awake` | Let the computer sleep as it normally would. |
 | `--config <file>` | Read settings from this file. |

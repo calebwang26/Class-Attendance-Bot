@@ -64,6 +64,10 @@ export interface Config {
     /** null uses Playwright's bundled Chromium; "chrome" uses installed Google Chrome. */
     channel: string | null;
     profileDir: string;
+    /** Let Poll Everywhere pages read this computer's real location (for location check-ins). */
+    shareLocation: boolean;
+    /** Run extensions installed in the bot's profile (Playwright turns them off otherwise). */
+    extensions: boolean;
   };
   dedupe: {
     file: string;
@@ -126,6 +130,8 @@ export const DEFAULT_CONFIG: Config = {
     headless: false,
     channel: null,
     profileDir: '.data/profile',
+    shareLocation: false,
+    extensions: true,
   },
   dedupe: {
     file: '.data/answered.json',
@@ -195,6 +201,8 @@ const CONFIG_SPEC: Spec = {
         headless: { type: 'boolean' },
         channel: { type: 'string', nullable: true, nonEmpty: true },
         profileDir: { type: 'string', nonEmpty: true },
+        shareLocation: { type: 'boolean' },
+        extensions: { type: 'boolean' },
       },
     },
     dedupe: {

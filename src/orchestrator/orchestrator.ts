@@ -82,8 +82,6 @@ interface Instance {
   secondChanceUsed: boolean;
   /** This appearance is currently counted as "could not answer" in the summary. */
   countedFailed: boolean;
-  /** It first appeared during lecture time (always true without lecture times). */
-  firstSeenInLecture: boolean;
   lastStatus: PollStatus | null;
   /** Things already reported for this appearance, so each is said once. */
   reported: Set<string>;
@@ -221,6 +219,7 @@ export class Orchestrator {
   private lastStateKey = '';
   /** Whether it was lecture time at the last check, to announce changes. null before the first. */
   private lastInLecture: boolean | null = null;
+  private readonly recordedDialogs = new Set<string>();
 
   private readonly counters = {
     detected: 0,
@@ -612,6 +611,7 @@ export class Orchestrator {
 
   private handleNeedsUser(recognition: Extract<Recognition, { state: 'needs_user' }>): void {
     if (recognition.reason === 'dialog') {
+      this.recordDialog(recognition.detail);
       this.alertUser(
         `dialog:${recognition.detail}`,
         'Poll bot needs you',
@@ -629,6 +629,18 @@ export class Orchestrator {
       reason: recognition.reason,
       detail: recognition.detail,
     });
+  }
+
+  /** Logs a dialog's buttons and markup and saves a screenshot, once per dialog per session. */
+  private recordDialog(title: string): void {
+    if (this.recordedDialogs.has(title)) return;
+    this.recordedDialogs.add(title);
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    void (async () => {
+      const details = await this.monitor.describeDialog();
+      const screenshot = await this.monitor.screenshot(this.deps.screenshotDir, `dialog-${stamp}.png`);
+      this.logger.info('dialog.recorded', { title, ...(details ?? {}), screenshot });
+    })().catch(() => undefined);
   }
 
   private handleUnknown(reason: string, snapshot: PageSnapshot, now: number): void {
@@ -715,7 +727,6 @@ export class Orchestrator {
         gaveUpAt: null,
         secondChanceUsed: false,
         countedFailed: false,
-        firstSeenInLecture: this.inLecture(),
         lastStatus: null,
         reported: new Set(),
       };
@@ -840,12 +851,12 @@ export class Orchestrator {
     }
 
     // Only during the person's own lecture: the same link may serve another section's.
-    // A poll that first appeared outside lecture time is never answered, even if it is
-    // still showing when lecture time begins (it belongs to an earlier lecture).
-    if (!instance.firstSeenInLecture || !this.inLecture()) {
+    // A poll opened before lecture time is answered once lecture time begins.
+    if (!this.inLecture()) {
       this.reportOutsideLecture(instance, poll);
       return;
     }
+    if (instance.reported.delete('outside_lecture')) this.counters.outsideLecture -= 1;
 
     // decision.action === 'respond'. Hold off until the response delay has passed and the
     // poll has been steadily open, in the same page element, for the settling period.
@@ -1026,11 +1037,13 @@ export class Orchestrator {
     if (instance.reported.has('outside_lecture')) return;
     instance.reported.add('outside_lecture');
     this.counters.outsideLecture += 1;
-    const why = instance.firstSeenInLecture
-      ? 'your lecture time ended before it could be answered'
-      : 'it appeared outside your lecture times';
-    const message = `Not answering ${quote(poll.question || 'this poll', 60)}: ${why}. If it is for your lecture, answer it by hand in the bot's window.`;
-    this.logger.info('poll.outside_lecture', { fingerprint: poll.fingerprint, firstSeenInLecture: instance.firstSeenInLecture, message });
+    const next = this.nextLecture();
+    const why =
+      instance.failedAttempts > 0
+        ? 'your lecture time ended before it could be answered'
+        : `it is not lecture time. If it is still open when lecture time starts${next ? ` (${next})` : ''}, it will be answered then`;
+    const message = `Not answering ${quote(poll.question || 'this poll', 60)} yet: ${why}. If it is for your lecture now, answer it by hand in the bot's window.`;
+    this.logger.info('poll.outside_lecture', { fingerprint: poll.fingerprint, attempted: instance.failedAttempts > 0, message });
     this.deps.notify('Poll bot: not lecture time', message);
   }
 

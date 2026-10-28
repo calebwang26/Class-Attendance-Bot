@@ -18,7 +18,9 @@ own, and needs no API keys.
 - One person, one account. The bot does not manage other identities or
   respond for anyone else.
 - It does not get around CAPTCHAs, sign-in, registration, location check-ins
-  or rate limits. When it meets one it stops and tells you.
+  or rate limits. When it meets one it stops and tells you. It never fakes a
+  location: with `--share-location` a check-in gets the computer's real
+  location, so it only succeeds where you actually are.
 
 ## Permissions it uses
 
@@ -29,11 +31,12 @@ own, and needs no API keys.
 | Files | Settings, logs, answered-polls record, profile | This project folder only (unless you point settings elsewhere) |
 | Notifications (macOS) | Tell you when it needs you | Through the built-in `osascript` |
 | Prevent idle sleep (macOS) | Keep running through class | The built-in `caffeinate`, only while the bot runs |
+| Location (only with `--share-location`) | Location check-ins | The computer's real location, to pollev.com and pe.app only. macOS asks once to allow Location Services for the bot's browser. Off by default. |
 
 It does not use screen recording, accessibility control of other apps,
-microphone, camera, or location. It never reads your everyday browser's
-profile, history or saved passwords. It never grants a site permission to
-your location.
+microphone or camera, nor location unless you pass `--share-location`. It
+never reads your everyday browser's profile, history or saved passwords. It
+never sets a made-up location.
 
 ## Credentials
 

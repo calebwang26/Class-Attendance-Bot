@@ -84,7 +84,7 @@ interface, are not visible.
 | Situation | What the bot does |
 | --- | --- |
 | Rank order, survey, clickable image, Q&A | Notifies you to answer by hand; never clicks or types. |
-| Attendance check-in (asks for location) | Notifies you; never grants or fakes location. |
+| Attendance check-in (asks for location) | Notifies you; never fakes a location. With `--share-location` (`browser.shareLocation`), pollev.com and pe.app may read the computer's real location from the operating system; no other site, and no position is ever set by the bot. A dialog over the page is recorded once per session (`dialog.recorded`: its text, buttons, markup and a screenshot). |
 | Competition, between questions | Nothing to answer. A competition's multiple-choice question uses the same controls and is answered. |
 | A newer interface the bot does not recognise in the activity area | Reloads once, then notifies you with a screenshot. |
 | The page navigating away (e.g. a hand-off to another app) | Returns to the link. If that keeps happening, notifies you. |
@@ -308,14 +308,15 @@ at every start (`src/schedule/lectureHours.ts`, `src/cli/prompt.ts`).
   nothing is ignored or guessed.
 - **The rule.** Lecture time is each block widened by `lectureMarginMinutes`
   (default 5) at both ends, in the computer's local time, with a block past
-  midnight belonging to the day it starts. A poll is answered only if its
-  appearance began in lecture time and it is still lecture time when an
-  attempt starts. So a poll left showing from another lecture is not
-  answered when the person's lecture begins, and no new attempt starts after
-  lecture time ends (one already under way finishes). Each poll left alone
-  this way is logged (`poll.outside_lecture`), notified once and counted in
-  the summary ("Outside lecture"). The start and end of lecture time are
-  announced while the bot runs.
+  midnight belonging to the day it starts. Any open poll is answered while it
+  is lecture time, including one opened before lecture time began (some
+  presenters open the poll before class), and no new attempt starts after
+  lecture time ends (one already under way finishes). The trade-off: a poll
+  left open from another section's earlier lecture on the same link is
+  answered too. A poll held back outside lecture time is logged
+  (`poll.outside_lecture`) and notified once; it is counted in the summary
+  ("Outside lecture") unless it is answered later. The start and end of
+  lecture time are announced while the bot runs.
 
 ## 6. Staying healthy
 
@@ -395,6 +396,8 @@ folder.
 | `browser.headless` | `false` | Run without a window. |
 | `browser.channel` | `null` | `null` for the bundled Chromium, `"chrome"` for installed Chrome. |
 | `browser.profileDir` | `".data/profile"` | The bot's browser profile (holds the sign-in). |
+| `browser.extensions` | `true` | Run extensions installed in the bot's browser profile. Playwright otherwise starts the browser with all extensions off. An extension that changes pages (an ad blocker, say) can stop polls being read or answered: turn this off if answering misbehaves. |
+| `browser.shareLocation` | `false` | Let pollev.com and pe.app read the computer's real location (for location check-ins). `--share-location` turns it on. |
 | `dedupe.file` | `".data/answered.json"` | Record of answered polls. |
 | `dedupe.windowHours` | `12` | Earlier answers older than this are not considered. |
 | `dedupe.retainDays` | `30` | Entries older than this are deleted. |

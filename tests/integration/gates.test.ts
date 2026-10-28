@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import { test } from 'node:test';
 import { delay, PLANETS, withBot } from '../helpers/harness.ts';
 
@@ -67,6 +69,12 @@ test('a modal dialog over the page pauses the bot and tells the user', async () 
       const attention = await h.waitForEvent('attention');
       assert.equal(attention['reason'], 'dialog');
       assert.match(String(attention['message']), /Screen name configuration/);
+      const recorded = await h.waitForEvent('dialog.recorded');
+      assert.equal(recorded['title'], 'Screen name configuration');
+      assert.deepEqual(recorded['buttons'], ['Continue']);
+      assert.match(String(recorded['text']), /What should we call you\?/);
+      assert.match(String(recorded['html']), /name="screen_name"/);
+      assert.ok(fs.existsSync(String(recorded['screenshot'])), 'a screenshot of the dialog was saved');
       site.activate({ title: 'Pick', options: PLANETS });
       await delay(1200);
       assert.equal(site.attempts.length, 0);
@@ -244,4 +252,42 @@ test('a page the bot does not recognise is reloaded once, then reported with wha
       assert.equal(site.responsesFor(id).length, 1);
     },
   );
+});
+
+test('with shareLocation on, only Poll Everywhere sites are allowed to read the location', async () => {
+  const permissionOn = async (page: import('playwright').Page, url: string): Promise<string> => {
+    const probe = await page.context().newPage();
+    try {
+      await probe.route(url, (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>probe</title>' }));
+      await probe.goto(url);
+      return await probe.evaluate(async () => (await navigator.permissions.query({ name: 'geolocation' })).state);
+    } finally {
+      await probe.close();
+    }
+  };
+  for (const shareLocation of [true, false]) {
+    await withBot({ overrides: { browser: { shareLocation } } }, async (h) => {
+      await h.waitForEvent('watching');
+      const page = h.bot.browser.page;
+      assert.ok(page);
+      const expected = shareLocation ? 'granted' : 'prompt';
+      assert.equal(await permissionOn(page, 'https://pollev.com/someone'), expected);
+      assert.equal(await permissionOn(page, 'https://pe.app/someone'), expected);
+      assert.equal(await permissionOn(page, 'https://example.com/'), 'prompt', 'other sites are never given the location');
+    });
+  }
+});
+
+test('extensions installed in the profile are left on unless browser.extensions is turned off', async () => {
+  for (const extensions of [true, false]) {
+    await withBot({ overrides: { browser: { extensions } } }, async (h) => {
+      await h.waitForEvent('watching');
+      // The browser's own process: the one started with this test's profile.
+      const browserLine = execFileSync('ps', ['-axww', '-o', 'command='], { encoding: 'utf8' })
+        .split('\n')
+        .find((line) => line.includes(`--user-data-dir=${h.config.browser.profileDir}`) && !line.includes('--type='));
+      assert.ok(browserLine, 'the browser process was found');
+      assert.equal(/--disable-extensions(\s|$)/.test(browserLine), !extensions, browserLine);
+    });
+  }
 });

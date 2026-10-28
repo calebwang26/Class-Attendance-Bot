@@ -24,8 +24,8 @@ test('outside lecture time a poll is watched but not answered, and the user is t
   await withBot({ lectureHours: LECTURE, clock: time.clock }, async (h, site) => {
     site.activate({ title: 'Another section', options: PLANETS });
     const skipped = await h.waitForEvent('poll.outside_lecture');
-    assert.equal(skipped['firstSeenInLecture'], false);
-    assert.match(String(skipped['message']), /it appeared outside your lecture times/);
+    assert.equal(skipped['attempted'], false);
+    assert.match(String(skipped['message']), /it is not lecture time\. If it is still open when lecture time starts \(tomorrow 7:55am\), it will be answered then/);
     assert.ok(h.notifications.some((n) => /not lecture time/.test(n.title)));
     await delay(1500);
     assert.equal(site.attempts.length, 0);
@@ -46,22 +46,23 @@ test('during lecture time, including the 5-minute margin before it, polls are an
   });
 });
 
-test('a poll left showing from before lecture time is not answered when lecture time begins; a new one is', async () => {
-  const time = settableClock(7, 30);
+test('a poll opened before lecture time is answered once lecture time begins, and counted only as answered', async () => {
+  const time = settableClock(6, 31);
   await withBot({ lectureHours: LECTURE, clock: time.clock }, async (h, site) => {
-    const stale = site.activate({ title: 'Left up from yesterday', options: PLANETS });
-    await h.waitForEvent('poll.outside_lecture');
-    time.set(8, 5);
-    await h.waitForEvent('lecture.started');
+    const early = site.activate({ title: 'Opened before class', options: PLANETS });
+    const skipped = await h.waitForEvent('poll.outside_lecture');
+    assert.match(String(skipped['message']), /it will be answered then/);
     await delay(1500);
-    assert.equal(site.responsesFor(stale).length, 0, 'the stale poll is still left alone');
+    assert.equal(site.attempts.length, 0, 'nothing is sent before lecture time');
 
-    site.deactivate();
-    await delay(900);
-    const fresh = site.activate({ title: 'In my lecture', options: PLANETS });
+    time.set(7, 55);
+    await h.waitForEvent('lecture.started');
     await h.waitForEvent('poll.answered');
-    assert.equal(site.responsesFor(fresh).length, 1);
+    assert.equal(site.responsesFor(early).length, 1);
     assert.equal(site.attempts.length, 1);
+    const summary = await h.stop();
+    assert.equal(summary.answered, 1);
+    assert.equal(summary.outsideLecture, 0);
   });
 });
 
@@ -81,7 +82,7 @@ test('when lecture time ends during retries, no further attempt is made', async 
       await h.until(() => site.attempts.length >= 1, 'the first attempt', 15000);
       time.set(9, 40);
       const skipped = await h.waitForEvent('poll.outside_lecture', undefined, 15000);
-      assert.equal(skipped['firstSeenInLecture'], true);
+      assert.equal(skipped['attempted'], true);
       assert.match(String(skipped['message']), /lecture time ended before it could be answered/);
       const attempts = site.attempts.length;
       await delay(2500);

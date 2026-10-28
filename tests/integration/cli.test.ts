@@ -291,7 +291,7 @@ test('--hours outside lecture time: the poll is watched, not answered, and the s
     assert.equal(code, 0, out);
     assert.match(out, /Lecture: {2}Every day/);
     assert.match(out, /not lecture time — watching only; answering starts (today|tomorrow) /);
-    assert.match(out, /Not answering "Another section": it appeared outside your lecture times/);
+    assert.match(out, /Not answering "Another section" yet: it is not lecture time\. If it is still open when lecture time starts/);
     assert.match(out, /Outside lecture:\s+1/);
     assert.equal(site.attempts.length, 0);
     const state = JSON.parse(fs.readFileSync(path.join(dir, 'data', 'state.json'), 'utf8')) as { recentHours: unknown[] };

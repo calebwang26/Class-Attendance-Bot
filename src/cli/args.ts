@@ -42,6 +42,7 @@ Options (after "--")
   --stop-after <minutes>    stop by itself after this long (default: never)
   --chrome                  use installed Google Chrome instead of the bundled Chromium
   --headless                run the browser without a window
+  --share-location          let Poll Everywhere read this computer's real location (for check-ins)
   --allow-guest             answer even when not signed in (responses will be anonymous)
   --no-keep-awake           let the computer sleep on its own schedule
   --config <file>           settings file (default: pollbot.config.json if present)
@@ -67,6 +68,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
         'any-time': { type: 'boolean' },
         chrome: { type: 'boolean' },
         headless: { type: 'boolean' },
+        'share-location': { type: 'boolean' },
         'no-keep-awake': { type: 'boolean' },
         'allow-guest': { type: 'boolean' },
         config: { type: 'string' },
@@ -102,6 +104,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
   const browser: NonNullable<PartialConfig['browser']> = {};
   if (values.chrome) browser.channel = 'chrome';
   if (values.headless) browser.headless = true;
+  if (values['share-location']) browser.shareLocation = true;
   if (Object.keys(browser).length > 0) overrides.browser = browser;
   if (values['no-keep-awake']) overrides.keepAwake = false;
   if (values['allow-guest']) overrides.requireSignIn = false;

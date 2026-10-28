@@ -6,6 +6,9 @@ import type { PageSnapshot } from '../types.ts';
 import { errorMessage, withTimeout } from '../util/time.ts';
 import { AGENT_GLOBAL, AGENT_VERSION, NOTIFY_BINDING, installPageAgent, type PageAgent } from './pageAgent.ts';
 
+/** The only sites given the computer's location when `browser.shareLocation` is on. */
+export const LOCATION_ORIGINS = ['https://pollev.com', 'https://www.pollev.com', 'https://pe.app'] as const;
+
 export interface MonitorEvents {
   /** The page changed in some way; a fresh snapshot is worth taking. */
   onChange(reason: string): void;
@@ -94,6 +97,7 @@ export class BrowserMonitor {
         handleSIGINT: false,
         handleSIGTERM: false,
         handleSIGHUP: false,
+        ...(this.config.browser.extensions ? { ignoreDefaultArgs: ['--disable-extensions'] } : {}),
       });
       context = await this.launching;
     } catch (error) {
@@ -126,6 +130,10 @@ export class BrowserMonitor {
       if (!this.config.monitor.eventDriven) return;
       this.events.onChange(typeof reason === 'string' ? reason : 'mutation');
     });
+    if (this.config.browser.shareLocation) {
+      // The real location from the operating system: no position is ever set by the bot.
+      for (const origin of LOCATION_ORIGINS) await context.grantPermissions(['geolocation'], { origin });
+    }
     await context.addInitScript(installPageAgent, this.agentOptions());
     context.on('close', () => {
       if (this.closing) return;
@@ -350,6 +358,33 @@ export class BrowserMonitor {
         return null;
       }
       return element as ElementHandle<HTMLElement>;
+    } catch {
+      return null;
+    }
+  }
+
+  /** The visible blocking dialog's text, buttons and markup, or null if none can be read. */
+  async describeDialog(): Promise<{ text: string; buttons: string[]; html: string } | null> {
+    const page = this.currentPage;
+    if (!page || page.isClosed()) return null;
+    try {
+      return await withTimeout(
+        page.evaluate(() => {
+          const visible = (el: Element): boolean => {
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+          };
+          const dialog = Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"], [role="alertdialog"], dialog[open]')).find(visible);
+          if (!dialog) return null;
+          const squash = (s: string | null | undefined): string => (s ?? '').replace(/\s+/g, ' ').trim();
+          const buttons = Array.from(dialog.querySelectorAll('button, [role="button"], a[href], input[type="submit"], input[type="button"]'))
+            .filter(visible)
+            .map((b) => squash(b.textContent) || squash(b.getAttribute('aria-label')) || squash((b as HTMLInputElement).value) || '(no label)');
+          return { text: squash((dialog as HTMLElement).innerText).slice(0, 1000), buttons, html: dialog.outerHTML.slice(0, 20000) };
+        }),
+        this.config.monitor.snapshotTimeoutMs,
+        'reading the dialog',
+      );
     } catch {
       return null;
     }
