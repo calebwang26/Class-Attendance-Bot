@@ -130,7 +130,7 @@ export const DEFAULT_CONFIG: Config = {
     headless: false,
     channel: null,
     profileDir: '.data/profile',
-    shareLocation: false,
+    shareLocation: true,
     extensions: true,
   },
   dedupe: {

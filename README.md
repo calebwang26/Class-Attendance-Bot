@@ -202,7 +202,7 @@ Flags go after `--`, for example `npm start -- pollev.com/x --dry-run`.
 | `--stop-after <minutes>` | Stop by itself after this long. Default: never. |
 | `--chrome` | Use your installed Google Chrome instead of the bundled browser. |
 | `--headless` | Run the browser without a window. |
-| `--share-location` | Let pollev.com and pe.app read your computer's real location, for location check-ins. Off by default; never a made-up location. |
+| `--share-location` | Let pollev.com and pe.app read your computer's real location, for location check-ins. On by default (set `browser.shareLocation` to `false` to turn it off); never a made-up location. |
 | `--allow-guest` | Answer even when not signed in. Responses will be anonymous. |
 | `--no-keep-awake` | Let the computer sleep as it normally would. |
 | `--config <file>` | Read settings from this file. |

@@ -84,7 +84,7 @@ interface, are not visible.
 | Situation | What the bot does |
 | --- | --- |
 | Rank order, survey, clickable image, Q&A | Notifies you to answer by hand; never clicks or types. |
-| Attendance check-in (asks for location) | Notifies you; never fakes a location. With `--share-location` (`browser.shareLocation`), pollev.com and pe.app may read the computer's real location from the operating system; no other site, and no position is ever set by the bot. A dialog over the page is recorded once per session (`dialog.recorded`: its text, buttons, markup and a screenshot). |
+| Attendance check-in (asks for location) | Notifies you; never fakes a location. With `browser.shareLocation` (on by default), pollev.com and pe.app may read the computer's real location from the operating system; no other site, and no position is ever set by the bot. A dialog over the page is recorded once per session (`dialog.recorded`: its text, buttons, markup and a screenshot). |
 | Competition, between questions | Nothing to answer. A competition's multiple-choice question uses the same controls and is answered. |
 | A newer interface the bot does not recognise in the activity area | Reloads once, then notifies you with a screenshot. |
 | The page navigating away (e.g. a hand-off to another app) | Returns to the link. If that keeps happening, notifies you. |
@@ -397,7 +397,7 @@ folder.
 | `browser.channel` | `null` | `null` for the bundled Chromium, `"chrome"` for installed Chrome. |
 | `browser.profileDir` | `".data/profile"` | The bot's browser profile (holds the sign-in). |
 | `browser.extensions` | `true` | Run extensions installed in the bot's browser profile. Playwright otherwise starts the browser with all extensions off. An extension that changes pages (an ad blocker, say) can stop polls being read or answered: turn this off if answering misbehaves. |
-| `browser.shareLocation` | `false` | Let pollev.com and pe.app read the computer's real location (for location check-ins). `--share-location` turns it on. |
+| `browser.shareLocation` | `true` | Let pollev.com and pe.app read the computer's real location (for location check-ins). Set it to `false` in the settings file to turn it off. |
 | `dedupe.file` | `".data/answered.json"` | Record of answered polls. |
 | `dedupe.windowHours` | `12` | Earlier answers older than this are not considered. |
 | `dedupe.retainDays` | `30` | Entries older than this are deleted. |
