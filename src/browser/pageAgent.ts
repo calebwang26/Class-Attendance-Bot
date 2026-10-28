@@ -1,11 +1,11 @@
-import type { PageSnapshot, SnapshotOption, SnapshotPoll } from '../types.ts';
+import type { CheckInState, PageSnapshot, SnapshotOption, SnapshotPoll } from '../types.ts';
 
 /** Name of the object the agent installs on `window`. */
 export const AGENT_GLOBAL = '__pollbot';
 /** Name of the function the page calls to tell Node that something changed. */
 export const NOTIFY_BINDING = '__pollbotNotify';
 /** Bumped whenever the snapshot shape or extraction logic changes. */
-export const AGENT_VERSION = 1;
+export const AGENT_VERSION = 2;
 
 export interface PageAgent {
   version: number;
@@ -31,7 +31,7 @@ export interface PageAgent {
 export function installPageAgent(options: { quietMs: number }): void {
   const KEY = '__pollbot';
   const NOTIFY = '__pollbotNotify';
-  const VERSION = 1;
+  const VERSION = 2;
 
   const win = window as unknown as Record<string, unknown>;
   const existing = win[KEY] as { version?: number } | undefined;
@@ -125,6 +125,33 @@ export function installPageAgent(options: { quietMs: number }): void {
       return clean(dialog.getAttribute('aria-label')) || textOf(dialog).slice(0, 80) || 'dialog';
     }
     return null;
+  };
+
+  // Poll Everywhere's location check-in panel, run by its "participate--check-in"
+  // script. Its "Check in" button makes the page ask the browser for the location
+  // and send it; "Continue without check-in" is never touched.
+  const CHECK_IN_FAILED = /We were unable to check you in/i;
+  const checkInState = (): CheckInState => {
+    const state: CheckInState = { showing: false, buttonRef: null, failed: false };
+    for (const panel of all(document, '[data-controller~="participate--check-in"]')) {
+      if (!isVisible(panel)) continue;
+      state.showing = true;
+      const buttons = all(panel, 'button, [role="button"], input[type="submit"], input[type="button"]').filter(
+        (b) => isVisible(b) && /^check in$/i.test(textOf(b) || clean((b as HTMLInputElement).value) || clean(b.getAttribute('aria-label'))),
+      );
+      if (buttons.length === 1 && (buttons[0] as HTMLButtonElement).disabled !== true) state.buttonRef = refFor(buttons[0] as Element);
+      break;
+    }
+    if (CHECK_IN_FAILED.test(document.body.textContent ?? '')) {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (CHECK_IN_FAILED.test(node.textContent ?? '') && isVisible(node.parentElement)) {
+          state.failed = true;
+          break;
+        }
+      }
+    }
+    return state;
   };
 
   const emptyPoll = (): SnapshotPoll => ({
@@ -622,6 +649,7 @@ export function installPageAgent(options: { quietMs: number }): void {
       authRequired: auth.required,
       authReason: auth.reason,
       blockingDialog: null,
+      checkIn: { showing: false, buttonRef: null, failed: false },
       liveTabSelected: null,
       unknownControls: 0,
       cookieBanner: false,
@@ -631,6 +659,7 @@ export function installPageAgent(options: { quietMs: number }): void {
     };
     if (!document.body) return base;
     base.blockingDialog = blockingDialog();
+    base.checkIn = checkInState();
     if (isPollEverywhere2()) return pollEverywhere2(base);
     return isPollEverywhere() ? pollEverywhere(base) : generic(base);
   };

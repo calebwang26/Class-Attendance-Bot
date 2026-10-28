@@ -84,7 +84,7 @@ interface, are not visible.
 | Situation | What the bot does |
 | --- | --- |
 | Rank order, survey, clickable image, Q&A | Notifies you to answer by hand; never clicks or types. |
-| Attendance check-in (asks for location) | Notifies you; never fakes a location. With `browser.shareLocation` (on by default), pollev.com and pe.app may read the computer's real location from the operating system; no other site, and no position is ever set by the bot. A dialog over the page is recorded once per session (`dialog.recorded`: its text, buttons, markup and a screenshot). |
+| Attendance check-in (asks for location) | During lecture time, clicks "Check in" (setting `checkIn`) and reports the outcome (`checkin.clicked`, then `checkin.done`, `checkin.failed` or `checkin.unconfirmed`, each with a screenshot). Never fakes a location: with `browser.shareLocation` (on by default), pollev.com and pe.app may read the computer's real location from the operating system; no other site, and no position is ever set by the bot. Outside lecture time, in a dry run, while signed out, with either setting off, when asked again within two minutes of a click, or for the rest of the run once a click was not confirmed as accepted, it notifies you instead. A dialog over the page is recorded once per session (`dialog.recorded`: its text, buttons, markup and a screenshot). |
 | Competition, between questions | Nothing to answer. A competition's multiple-choice question uses the same controls and is answered. |
 | A newer interface the bot does not recognise in the activity area | Reloads once, then notifies you with a screenshot. |
 | The page navigating away (e.g. a hand-off to another app) | Returns to the link. If that keeps happening, notifies you. |
@@ -373,6 +373,7 @@ folder.
 | `lectureMarginMinutes` | `5` | Minutes added before and after the lecture times entered at start-up. |
 | `keepAwake` | `true` | Keep the Mac from idle-sleeping while running. |
 | `requireSignIn` | `true` | On Poll Everywhere, do not answer while signed out. |
+| `checkIn` | `true` | On a Poll Everywhere location check-in, click "Check in" during lecture time (needs `browser.shareLocation`). |
 | `response.multipleChoice` | `"random"` | `random`, `first`, `last` or `skip`. |
 | `response.freeText` | `"fixed_text"` | `fixed_text`, `echo_question` or `skip`. |
 | `response.fixedText` | `"value"` | Text sent to free-text polls. |
@@ -421,8 +422,23 @@ folder.
 - **Poll Everywhere 2.0 is only partly observed.** Its multiple-choice
   markup was read from a live poll, but not the page after voting or a
   free-text poll. See "Poll Everywhere 2.0" above.
+- **Location check-in.** Captured from pollev.com/oceans2025 on
+  2026-10-28: a `turbo-frame` with `role="dialog"`, `aria-label="Check in
+  configuration"`, loaded from `/<presenter>/check_in`, holding
+  `[data-controller="participate--check-in"]` with a form of hidden
+  latitude/longitude/accuracy/error fields and the buttons "Check in" and
+  "Continue without check-in". The page text "We were unable to check you
+  in." (with "Retry") is the failure message. The bot clicks only when that
+  panel holds exactly one visible, enabled button labelled exactly "Check in",
+  and counts the panel staying closed for 2 seconds without that message as
+  accepted. While it waits (up to 30 seconds) nothing else is read; the panel
+  covers the page meanwhile anyway. The
+  buttons' own markup and the page after an accepted check-in have not been
+  captured; the first live check-in records both (`dialog.recorded`,
+  `checkin.*` screenshots). pe.app's check-in has not been seen: there it is
+  reported as a dialog for you.
 - **Newer interfaces.** The participant page also ships code for a
-  server-rendered attendance check-in and a hand-off to another app. If the
+  hand-off to another app. If the
   presenter's polls use an interface other than the one described above, the
   bot reports "unrecognised" or "keeps leaving" rather than answering.
 - **Server responses are unseen.** Server error messages, and whether the

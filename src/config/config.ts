@@ -21,6 +21,11 @@ export interface Config {
    * do not answer while signed out: the response would not be credited to you.
    */
   requireSignIn: boolean;
+  /**
+   * On a Poll Everywhere location check-in, click "Check in" during lecture time.
+   * The page then gets the computer's real location (needs `browser.shareLocation`).
+   */
+  checkIn: boolean;
   response: {
     multipleChoice: MultipleChoiceStrategy;
     freeText: FreeTextStrategy;
@@ -104,6 +109,7 @@ export const DEFAULT_CONFIG: Config = {
   lectureMarginMinutes: 5,
   keepAwake: true,
   requireSignIn: true,
+  checkIn: true,
   response: {
     multipleChoice: 'random',
     freeText: 'fixed_text',
@@ -167,6 +173,7 @@ const CONFIG_SPEC: Spec = {
     lectureMarginMinutes: { type: 'number', integer: true, min: 0, max: 60 },
     keepAwake: { type: 'boolean' },
     requireSignIn: { type: 'boolean' },
+    checkIn: { type: 'boolean' },
     response: {
       type: 'object',
       fields: {

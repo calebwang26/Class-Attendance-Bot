@@ -17,10 +17,12 @@ own, and needs no API keys.
   were there. That permission is yours to confirm.
 - One person, one account. The bot does not manage other identities or
   respond for anyone else.
-- It does not get around CAPTCHAs, sign-in, registration, location check-ins
-  or rate limits. When it meets one it stops and tells you. It never fakes a
-  location: a check-in gets the computer's real location (on by default;
-  `browser.shareLocation: false` turns it off), so it only succeeds where you actually are.
+- It does not get around CAPTCHAs, sign-in, registration or rate limits.
+  When it meets one it stops and tells you. During lecture time it clicks
+  "Check in" on a location check-in (`checkIn: false` turns that off). It
+  never fakes a location: a check-in gets the computer's real location (on by
+  default; `browser.shareLocation: false` turns it off), so it only succeeds
+  where you actually are.
 
 ## Permissions it uses
 

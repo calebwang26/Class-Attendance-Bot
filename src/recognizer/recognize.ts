@@ -62,6 +62,9 @@ export function recognize(snapshot: PageSnapshot, options: RecognizeOptions): Re
   if (snapshot.authRequired) {
     return { state: 'needs_user', reason: 'sign_in', detail: snapshot.authReason ?? 'a sign-in page is showing' };
   }
+  // Signed out, a check-in would not be credited to the person: it is left to them as a dialog.
+  const signedOut = options.requireSignIn && snapshot.signedIn === false;
+  if (snapshot.checkIn.buttonRef !== null && !signedOut) return { state: 'check_in', buttonRef: snapshot.checkIn.buttonRef };
   if (snapshot.blockingDialog !== null) {
     return { state: 'needs_user', reason: 'dialog', detail: snapshot.blockingDialog };
   }

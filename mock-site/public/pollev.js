@@ -619,6 +619,49 @@
     });
   });
 
+  // ---------------------------------------------------------------- location check-in
+
+  // "Check in" asks the browser for the location and sends it; the panel closes once
+  // the server accepts it, and "We were unable to check you in." shows when it does not.
+  const failedNote = document.getElementById('check-in-failed');
+  const closeCheckIn = () => {
+    const modal = document.getElementById('check-in-modal');
+    if (modal) modal.remove();
+  };
+  const sendCheckIn = (fields) => {
+    fetch(`/pollev/${encodeURIComponent(presenter)}/check_in`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(fields),
+    })
+      .then((r) => r.json())
+      .then((reply) => {
+        if (reply.accepted) {
+          failedNote.hidden = true;
+          closeCheckIn();
+        } else {
+          failedNote.hidden = false;
+        }
+      })
+      .catch(() => {
+        failedNote.hidden = false;
+      });
+  };
+  document.addEventListener('click', (event) => {
+    const button = event.target instanceof Element ? event.target.closest('[data-check-in]') : null;
+    if (!button) return;
+    if (button.dataset.checkIn === 'skip') {
+      closeCheckIn();
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) =>
+        sendCheckIn({ latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: position.coords.accuracy }),
+      (error) => sendCheckIn({ error: error.message || 'unavailable' }),
+      { timeout: 5000 },
+    );
+  });
+
   // ---------------------------------------------------------------- push channel
 
   // As on the real page, the element carries a channel object whose state is the

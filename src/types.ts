@@ -113,6 +113,8 @@ export interface PageSnapshot {
   authReason: string | null;
   /** Label of a modal dialog that is covering the page, if any. */
   blockingDialog: string | null;
+  /** Poll Everywhere's location check-in, as the page shows it. */
+  checkIn: CheckInState;
   /** False when the page is showing some other tab than the live activity. null = not applicable. */
   liveTabSelected: boolean | null;
   /** Interactive controls in the activity area that the extractor did not recognise. */
@@ -123,6 +125,15 @@ export interface PageSnapshot {
   poll: SnapshotPoll | null;
   /** Visible text of the activity area, truncated. Diagnostics only. */
   scopeText: string;
+}
+
+export interface CheckInState {
+  /** The check-in panel ("The presenter has requested you check in ...") is showing. */
+  showing: boolean;
+  /** The panel's one "Check in" button, if it is there. */
+  buttonRef: string | null;
+  /** The page says "We were unable to check you in." */
+  failed: boolean;
 }
 
 export interface PollOption {
@@ -148,6 +159,7 @@ export type Recognition =
   | { state: 'loading'; reason: string }
   | { state: 'waiting' }
   | { state: 'needs_user'; reason: 'sign_in' | 'dialog' | 'signed_out'; detail: string }
+  | { state: 'check_in'; buttonRef: string }
   | { state: 'unknown'; reason: string }
   | { state: 'poll'; poll: Poll; status: PollStatus; evidence: string; snapshot: SnapshotPoll };
 

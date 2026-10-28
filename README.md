@@ -174,6 +174,15 @@ It shows a desktop notification and a message in the terminal when:
   responses would not be credited to you. Sign in in the bot's window and it
   carries on by itself.
 - **A dialog or sign-in page is in the way.** Deal with it in the bot's window.
+- **A location check-in it did not complete.** During your lecture time the bot
+  clicks "Check in" on Poll Everywhere's location check-in by itself, and the
+  page gets your computer's real location (macOS asks once to allow Location
+  Services for the bot's browser). It tells you whether Poll Everywhere accepted
+  it. Outside lecture time, in a dry run, while signed out, with
+  `browser.shareLocation` or `checkIn` off, if it asks again within two
+  minutes, or once a check-in it clicked was not accepted, it leaves the
+  check-in to you. It never clicks "Continue without check-in" and never
+  fakes a location, so it only succeeds where you actually are.
 - **A poll is of a type it does not answer:** rank order, survey, clickable
   image, Q&A, or attendance check-in. Answer that one yourself in the bot's
   window.

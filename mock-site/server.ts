@@ -144,6 +144,18 @@ export interface PageFlags {
   genericSilent: boolean;
   /** Show controls of a kind the bot has never seen in place of the waiting screen. */
   unknownWidget: boolean;
+  /** The presenter asks for a location check-in (Poll Everywhere's "Check in configuration" panel). */
+  checkIn: boolean;
+}
+
+/** A location check-in the server received. */
+export interface CheckInEntry {
+  participant: string;
+  latitude: number | null;
+  longitude: number | null;
+  /** What the page reported when it could not get a location. */
+  error: string | null;
+  accepted: boolean;
 }
 
 interface Client {
@@ -189,7 +201,12 @@ export class MockSite {
     tabs: true,
     genericSilent: false,
     unknownWidget: false,
+    checkIn: false,
   };
+  /** Every check-in the server received, oldest first. */
+  readonly checkIns: CheckInEntry[] = [];
+  /** Where check-ins are accepted (within `radiusM` metres). null = any location. */
+  checkInPlace: { latitude: number; longitude: number; radiusM: number } | null = null;
   /** Every response the server accepted, oldest first. Tests assert on this. */
   readonly ledger: LedgerEntry[] = [];
   /** Every submission request, whatever its outcome. */
@@ -557,6 +574,29 @@ export class MockSite {
       }
     }
 
+    if (parts[0] === 'pollev' && parts[1] && parts[2] === 'check_in' && method === 'POST') {
+      const participant = this.participantOf(req, res);
+      const body = await this.body(req);
+      const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+      const latitude = num(body['latitude']);
+      const longitude = num(body['longitude']);
+      const error = typeof body['error'] === 'string' && body['error'] !== '' ? body['error'] : null;
+      const place = this.checkInPlace;
+      const near = (lat: number, lon: number): boolean => {
+        if (!place) return true;
+        const rad = Math.PI / 180;
+        const dLat = (lat - place.latitude) * rad;
+        const dLon = (lon - place.longitude) * rad;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(place.latitude * rad) * Math.cos(lat * rad) * Math.sin(dLon / 2) ** 2;
+        return 2 * 6371000 * Math.asin(Math.sqrt(a)) <= place.radiusM;
+      };
+      const accepted = error === null && latitude !== null && longitude !== null && near(latitude, longitude);
+      this.checkIns.push({ participant, latitude, longitude, error, accepted });
+      if (accepted) this.flags.checkIn = false;
+      this.json(res, 200, { accepted });
+      return;
+    }
+
     if (parts[0] === 'pe2' && parts[1] && parts.length === 2 && method === 'GET') {
       const participant = this.participantOf(req, res);
       this.participants.add(participant);
@@ -848,6 +888,25 @@ export class MockSite {
       ? `<div class="modal"><div class="scrim"></div><turbo-frame role="dialog" aria-modal="true" aria-label="Screen name configuration" class="sheet">
 <h2>What should we call you?</h2><form onsubmit="return false"><label>Screen name <input type="text" name="screen_name"></label><button type="submit">Continue</button></form></turbo-frame></div>`
       : '';
+    // As captured from pollev.com on 2026-10-28 (see docs/TECHNICAL_DESIGN.md), less styling.
+    const checkIn = this.flags.checkIn
+      ? `<div class="modal" id="check-in-modal"><div class="scrim"></div><turbo-frame id="action_sheet-check-in" role="dialog" aria-modal="true" aria-label="Check in configuration" class="sheet" src="/pollev/${name}/check_in">
+<div class="h-full pt-safe" data-controller="participate--check-in">
+<form data-participate--check-in-target="form" action="/pollev/${name}/check_in" method="post" onsubmit="return false">
+<input type="hidden" name="latitude" data-participate--check-in-target="lat"><input type="hidden" name="longitude" data-participate--check-in-target="lon">
+<input type="hidden" name="accuracy" data-participate--check-in-target="acc"><input type="hidden" name="error" data-participate--check-in-target="error">
+</form>
+<div aria-live="polite" data-participate--check-in-target="request">
+<h2><span>Poll Everywhere</span></h2>
+<p>The presenter has requested you check in to their preset location.</p>
+<p>Your participation may not be counted if you continue without checking in.</p>
+<p>Only share your location if you are currently near the presenter.</p>
+<button type="button" data-check-in="go"><span class="mdc-button__ripple"></span><span class="mdc-button__label">Check in</span></button>
+<button type="button" data-check-in="skip"><span class="mdc-button__label">Continue without check-in</span></button>
+<p>We never store or share your location, we just confirm whether you're in the location the presenter is expecting.</p>
+</div>
+</div></turbo-frame></div>`
+      : '';
     const overlay = this.flags.overlay ? '<div id="click-eater" aria-hidden="true"></div>' : '';
     return `<!doctype html>
 <html class="h-full" lang="en">
@@ -876,6 +935,8 @@ ${account}
 </div>
 </div>
 ${dialog}
+${checkIn}
+<div id="check-in-failed" hidden><p>We were unable to check you in.</p><button type="button" data-check-in="go">Retry</button></div>
 <turbo-frame class="block" aria-live="polite" id="active_tab_content"><turbo-frame id="participate_presenter_${name}" src=""></turbo-frame></turbo-frame>
 <notification-manager></notification-manager>
 </main>

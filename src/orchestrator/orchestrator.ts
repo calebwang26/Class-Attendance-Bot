@@ -10,7 +10,7 @@ import { Submitter } from '../submitter/submit.ts';
 import { normalizeText } from '../recognizer/fingerprint.ts';
 import { describeLectureHours, describeMoment, isLectureTime, nextLectureStart, type LectureHours } from '../schedule/lectureHours.ts';
 import type { Confirmation, PageSnapshot, PlannedResponse, Poll, PollStatus, Recognition, SnapshotPoll } from '../types.ts';
-import { AbortError, backoffMs, errorMessage, randomInt } from '../util/time.ts';
+import { AbortError, backoffMs, errorMessage, randomInt, sleep } from '../util/time.ts';
 
 export type BotState = 'CONNECTING' | 'WATCHING' | 'RESPONDING' | 'RECOVERING' | 'STOPPED';
 
@@ -62,6 +62,12 @@ const RESULTS_WAIT_MS = 6000;
 const RETRY_CAP_MS = 30000;
 /** Longest the bot waits for a request the page is sending before it reloads anyway. */
 const SEND_WAIT_MS = 30000;
+/** Longest the bot waits after clicking "Check in" for the page to say how it went (finding the location can be slow). */
+const CHECK_IN_WAIT_MS = 30000;
+/** A check-in asked for again this soon after the bot clicked one is left to the person. */
+const CHECK_IN_GAP_MS = 2 * 60 * 1000;
+/** The panel must stay gone, with no failure message, this long to count as accepted (it loads lazily and may blink). */
+const CHECK_IN_SETTLE_MS = 2000;
 
 /** One continuous appearance of a poll on the page. */
 interface Instance {
@@ -220,6 +226,10 @@ export class Orchestrator {
   /** Whether it was lecture time at the last check, to announce changes. null before the first. */
   private lastInLecture: boolean | null = null;
   private readonly recordedDialogs = new Set<string>();
+  /** When the bot last clicked "Check in". */
+  private checkInClickedAt: number | null = null;
+  /** A click was not confirmed as accepted: from then on check-ins are left to the person. */
+  private checkInGaveUp = false;
 
   private readonly counters = {
     detected: 0,
@@ -486,7 +496,7 @@ export class Orchestrator {
 
     // Anything recognised on some other page (a sign-in provider, a link someone
     // followed) is not the poll. Nothing there is ever clicked.
-    if (!this.onTarget(snapshot) && (recognition.state === 'poll' || recognition.state === 'waiting')) {
+    if (!this.onTarget(snapshot) && (recognition.state === 'poll' || recognition.state === 'waiting' || recognition.state === 'check_in')) {
       this.housekeeping(snapshot, recognition, false, now);
       return;
     }
@@ -512,6 +522,9 @@ export class Orchestrator {
         break;
       case 'needs_user':
         this.handleNeedsUser(recognition);
+        break;
+      case 'check_in':
+        await this.handleCheckIn(recognition, now);
         break;
       case 'unknown':
         this.handleUnknown(recognition.reason, snapshot, now);
@@ -629,6 +642,92 @@ export class Orchestrator {
       reason: recognition.reason,
       detail: recognition.detail,
     });
+  }
+
+  /**
+   * Poll Everywhere's location check-in: clicks its "Check in" button, after which the
+   * page asks the browser for the computer's real location and sends it. Only during
+   * lecture time, never in a dry run, and never when the location is not shared (the
+   * check-in could only fail). Anything else is left to the person.
+   */
+  private async handleCheckIn(recognition: Extract<Recognition, { state: 'check_in' }>, now: number): Promise<void> {
+    const leaveToUser = (why: string): void => {
+      this.recordDialog('Check in configuration');
+      this.alertUser(`check_in:${why}`, 'Poll bot: location check-in', `The presenter is asking you to check in with your location. ${why} Check in by hand in the bot's browser window if you are there.`, {
+        reason: 'check_in',
+      });
+    };
+    if (!this.config.checkIn) return leaveToUser('Automatic check-in is turned off (checkIn).');
+    if (!this.config.browser.shareLocation) return leaveToUser('The bot is not sharing your location (browser.shareLocation is off), so it did not click "Check in".');
+    if (this.config.dryRun) return leaveToUser('This is a dry run, so the bot did not click "Check in".');
+    if (!this.inLecture()) return leaveToUser('It is not your lecture time, so the bot did not click "Check in".');
+    if (this.checkInGaveUp) return leaveToUser('An earlier automatic check-in was not accepted, so the bot is not clicking "Check in" again.');
+    if (this.checkInClickedAt !== null && now - this.checkInClickedAt < CHECK_IN_GAP_MS) {
+      return leaveToUser('The bot clicked "Check in" less than two minutes ago and the page is asking again, so it is not clicking again.');
+    }
+
+    const handle = await this.monitor.resolve(recognition.buttonRef);
+    if (!handle) return;
+    this.recordDialog('Check in configuration');
+    const before = await this.monitor.snapshot();
+    const failedBefore = before.ok && before.snapshot.checkIn.failed;
+    this.checkInClickedAt = Date.now();
+    this.setState('RESPONDING');
+    try {
+      await handle.click({ timeout: Math.max(500, Math.min(5000, Math.floor(this.config.response.confirmTimeoutMs / 2))) });
+    } catch (error) {
+      this.setState('WATCHING');
+      this.logger.warn('checkin.click_failed', { error: errorMessage(error) });
+      leaveToUser(`The bot could not click "Check in" (${errorMessage(error)}).`);
+      return;
+    } finally {
+      await handle.dispose().catch(() => undefined);
+    }
+    this.logger.info('checkin.clicked', { message: 'Location check-in: clicked "Check in". Waiting for Poll Everywhere to confirm.' });
+
+    // The panel closes when Poll Everywhere accepts the location; it says so when it does not.
+    const deadline = Date.now() + CHECK_IN_WAIT_MS;
+    let outcome: 'checked_in' | 'failed' | 'unconfirmed' = 'unconfirmed';
+    let goneSince: number | null = null;
+    while (Date.now() < deadline && !this.abort.signal.aborted) {
+      await sleep(500, this.abort.signal);
+      const read = await this.monitor.snapshot();
+      if (!read.ok) continue;
+      const state = read.snapshot.checkIn;
+      if (state.failed && !failedBefore) {
+        outcome = 'failed';
+        break;
+      }
+      if (state.showing || state.failed) {
+        goneSince = null;
+        continue;
+      }
+      goneSince ??= Date.now();
+      if (Date.now() - goneSince >= CHECK_IN_SETTLE_MS) {
+        outcome = 'checked_in';
+        break;
+      }
+    }
+    this.setState('WATCHING');
+    if (outcome !== 'checked_in') this.checkInGaveUp = true;
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const screenshot = await this.monitor.screenshot(this.deps.screenshotDir, `checkin-${stamp}.png`);
+    if (outcome === 'checked_in') {
+      this.logger.info('checkin.done', { screenshot, message: 'Checked in: Poll Everywhere accepted your location.' });
+      this.deps.notify('Poll bot checked you in', 'Poll Everywhere accepted your location for the check-in.');
+    } else if (outcome === 'failed') {
+      this.logger.warn('checkin.failed', {
+        screenshot,
+        message: 'Poll Everywhere could not check you in: it did not accept the location. Check in by hand if you are there (Location Services must be on for the bot\'s browser).',
+      });
+      this.deps.notify('Poll bot: check-in failed', 'Poll Everywhere could not check you in with your location. Check in by hand if you are there.');
+    } else {
+      this.logger.warn('checkin.unconfirmed', {
+        screenshot,
+        message: 'Clicked "Check in", but the page did not show whether it worked. Look at the bot\'s browser window.',
+      });
+      this.deps.notify('Poll bot: check-in not confirmed', 'The bot clicked "Check in" but the page did not show whether it worked.');
+    }
   }
 
   /** Logs a dialog's buttons and markup and saves a screenshot, once per dialog per session. */
@@ -1235,7 +1334,7 @@ export class Orchestrator {
 
   private housekeeping(snapshot: PageSnapshot, recognition: Recognition, busy: boolean, now: number): void {
     if (this.recovery) return;
-    const blocked = recognition.state === 'needs_user';
+    const blocked = recognition.state === 'needs_user' || recognition.state === 'check_in';
 
     // Network: note the outage, and reload once it is over to catch anything missed.
     if (!snapshot.online) {

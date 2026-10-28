@@ -25,7 +25,7 @@ const poll = (over: Partial<SnapshotPoll> = {}): SnapshotPoll => ({
 });
 
 const snap = (over: Partial<PageSnapshot> = {}): PageSnapshot => ({
-  agentVersion: 1,
+  agentVersion: 2,
   docStartedAt: 0,
   url: 'https://pollev.com/someone',
   title: 'someone’s presentation',
@@ -39,6 +39,7 @@ const snap = (over: Partial<PageSnapshot> = {}): PageSnapshot => ({
   authRequired: false,
   authReason: null,
   blockingDialog: null,
+  checkIn: { showing: false, buttonRef: null, failed: false },
   liveTabSelected: true,
   unknownControls: 0,
   cookieBanner: false,
@@ -69,6 +70,23 @@ test('a sign-in page needs the user, ahead of everything else', () => {
 test('a modal dialog needs the user even while a poll is showing behind it', () => {
   const r = recognize(snap({ blockingDialog: 'Screen name configuration', poll: poll({ options: opts([['A', false, false]]) }) }), strict);
   assert.deepEqual(r, { state: 'needs_user', reason: 'dialog', detail: 'Screen name configuration' });
+});
+
+test('a location check-in with its "Check in" button is a check-in, ahead of the dialog it is shown in', () => {
+  const checkIn = { showing: true, buttonRef: 'x-7', failed: false };
+  const r = recognize(snap({ checkIn, blockingDialog: 'Check in configuration', poll: poll({ options: opts([['A', false, false]]) }) }), strict);
+  assert.deepEqual(r, { state: 'check_in', buttonRef: 'x-7' });
+  // Without a button to click (only "Retry", say), it is a dialog for the user like any other.
+  const noButton = recognize(snap({ checkIn: { ...checkIn, buttonRef: null }, blockingDialog: 'Check in configuration' }), strict);
+  assert.deepEqual(noButton, { state: 'needs_user', reason: 'dialog', detail: 'Check in configuration' });
+  // Signed out, it would not be credited: left to the user as a dialog.
+  assert.deepEqual(recognize(snap({ checkIn, signedIn: false, blockingDialog: 'Check in configuration' }), strict), {
+    state: 'needs_user',
+    reason: 'dialog',
+    detail: 'Check in configuration',
+  });
+  // A sign-in page still comes first.
+  assert.equal(recognize(snap({ checkIn, authRequired: true, authReason: 'a password field is showing' }), strict).state, 'needs_user');
 });
 
 test('signed out on Poll Everywhere needs the user, unless sign-in is not required', () => {

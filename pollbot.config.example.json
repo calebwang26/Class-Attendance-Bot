@@ -9,6 +9,7 @@
   "lectureMarginMinutes": 5,
   "keepAwake": true,
   "requireSignIn": true,
+  "checkIn": true,
   "notify": { "desktop": true, "sound": true },
   "logging": { "redactQuestionText": false }
 }
